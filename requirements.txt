@@ -1,5 +1,6 @@
-pyTelegramBotAPI
-pymongo
-flask
-flask-cors
-dnspython
+fastapi
+uvicorn
+telethon
+motor
+python-multipart
+starlette
