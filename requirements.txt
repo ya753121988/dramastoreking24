@@ -4,4 +4,6 @@ telethon
 motor
 python-multipart
 starlette
-bcrypt
+itsdangerous
+jinja2
+python-dotenv
