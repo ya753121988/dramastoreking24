@@ -1,293 +1,289 @@
 import os
-import asyncio
-import base64
+import telebot
+import math
 from datetime import datetime, timedelta
-from bson import ObjectId
-from fastapi import FastAPI, Request, Form, Depends, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
-from starlette.middleware.sessions import SessionMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
-from telethon import TelegramClient, events, Button
-import uvicorn
+from flask import Flask, render_template, request, redirect, url_for, session
+from pymongo import MongoClient, DESCENDING
+from bson.objectid import ObjectId
+from threading import Thread
 
-# --- CONFIGURATION (আপনার দেওয়া ডাটা) ---
-API_ID = 29904834
-API_HASH = '8b4fd9ef578af114502feeafa2d31938'
-BOT_TOKEN = '8655043839:AAGmoyWwzJFAi9hOovKNeySOp6UzrHBPibQ'
-MONGO_URI = "mongodb+srv://drama:drama@cluster0.sa4kvgu.mongodb.net/?appName=Cluster0"
-ADMIN_ID = 7120801813
-ADMIN_WEB_PASS = "admin"
-SECRET_KEY = "super-secret-key"
+# ==========================================
+# [FEATURE #1] কনফিগারেশন এবং ডাটাবেস কানেকশন
+# ==========================================
+TOKEN = '8655043839:AAGmoyWwzJFAi9hOovKNeySOp6UzrHBPibQ' 
+MONGO_URI = 'mongodb+srv://drama:drama@cluster0.sa4kvgu.mongodb.net/?appName=Cluster0' 
+ADMIN_ID = 7120801813 # আপনার টেলিগ্রাম আইডি
 
-# --- APP & DB SETUP ---
-app = FastAPI()
-app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
-client = AsyncIOMotorClient(MONGO_URI)
-db = client['FinalMovieDB']
-bot = TelegramClient('bot_session', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
+bot = telebot.TeleBot(TOKEN)
+app = Flask(__name__)
+app.secret_key = "movie_ultra_secure_99"
 
-# --- BOT LOGIC (MOVIE UPLOAD) ---
-upload_states = {}
+client = MongoClient(MONGO_URI)
+db = client['movie_final_v20']
+movies_col = db['movies']
+settings_col = db['settings']
+tasks_col = db['tasks']
+users_col = db['users']
+packages_col = db['packages']
 
-@bot.on(events.NewMessage(pattern='/movie'))
-async def start_movie(event):
-    if event.sender_id != ADMIN_ID:
-        return await event.reply("❌ আপনি এডমিন নন!")
-    upload_states[event.sender_id] = {"step": "name", "episodes": []}
-    await event.reply("🎬 মুভির নাম লিখুন:")
+# [FEATURE #2] অ্যাডমিন প্যানেল সেটিংস (Terazone ID & Ad Link)
+if not settings_col.find_one({"type": "config"}):
+    settings_col.insert_one({"type": "config", "terazone_id": "8888", "ad_link": "https://example.com/ad"})
 
-@bot.on(events.NewMessage)
-async def handle_inputs(event):
-    uid = event.sender_id
-    if uid not in upload_states: return
-    state = upload_states[uid]
+# ==========================================
+# [FEATURE #3] অ্যাডমিন সিকিউরিটি (বট কন্ট্রোল)
+# ==========================================
+user_states = {}
 
-    if state["step"] == "name":
-        state["name"] = event.text
-        state["step"] = "poster"
-        await event.reply("🖼 মুভির পোস্টার ফটোটি পাঠান (এটি অটো URL হয়ে যাবে):")
-    
-    elif state["step"] == "poster" and event.photo:
-        path = await event.download_media()
-        with open(path, "rb") as f:
-            state["poster_url"] = f"data:image/jpeg;base64,{base64.b64encode(f.read()).decode()}"
-        os.remove(path)
-        state["step"] = "episodes"
-        await event.reply("📎 এবার এক এক করে এপিসোড ফাইল দিন। শেষ হলে 'Done' ক্লিক করুন।", 
-                         buttons=[Button.inline("✅ Done", b"finish")])
+def is_admin(message):
+    return message.from_user.id == ADMIN_ID
 
-    elif state["step"] == "episodes" and event.file:
-        state["episodes"].append({"fid": event.file.id, "name": f"Episode {len(state['episodes'])+1}"})
-        await event.reply(f"✅ {len(state['episodes'])} টি এপিসোড যুক্ত হয়েছে।")
+@bot.message_handler(commands=['admin'])
+def admin_menu(message):
+    if not is_admin(message): return
+    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("Add Movie 🎬", "Add Task 📝")
+    markup.add("Add Package 🎁", "Ad Settings ⚙️")
+    markup.add("Delete Task ❌", "Delete Package 🗑️")
+    bot.send_message(message.chat.id, "অ্যাডমিন মেনু:", reply_markup=markup)
 
-@bot.on(events.CallbackQuery(data=b"finish"))
-async def save_movie(event):
-    uid = event.sender_id
-    if uid in upload_states:
-        data = upload_states[uid]
-        await db.movies.insert_one({
-            "title": data["name"], "poster": data["poster_url"], 
-            "episodes": data["episodes"], "date": datetime.now()
-        })
-        del upload_states[uid]
-        await event.edit("🚀 মুভিটি সফলভাবে সাইটে আপলোড হয়েছে!")
+# ==========================================
+# [FEATURE #4] /movie কমান্ড দিয়ে মুভি অ্যাড শুরু
+# [FEATURE #5] মুভির নাম ইনপুট
+# [FEATURE #6] ডিরেক্ট পোস্টার আপলোড (Auto URL Generation)
+# [FEATURE #7] আনলিমিটেড ইপিসোড/ফাইল অ্যাড সিস্টেম
+# [FEATURE #8] "Done ✅" বাটনে ক্লিক করলে সাইটে আপলোড
+# ==========================================
+@bot.message_handler(commands=['movie'])
+@bot.message_handler(func=lambda m: m.text == "Add Movie 🎬")
+def movie_start(message):
+    if not is_admin(message): return
+    user_states[message.chat.id] = {'step': 'name', 'data': {}}
+    bot.send_message(message.chat.id, "মুভির নাম লিখুন:")
 
-# --- WEB UI SYSTEM ---
-def layout(content):
-    return f"""
-    <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><script src="https://cdn.tailwindcss.com"></script></head>
-    <body class="bg-gray-900 text-white min-h-screen">
-        <nav class="bg-gray-800 p-4 flex justify-around border-b border-gray-700 sticky top-0 z-50">
-            <a href="/home">🏠 হোম</a> <a href="/tasks">💰 টাস্ক</a> <a href="/premium">💎 প্রিমিয়াম</a> <a href="/profile">👤 প্রোফাইল</a>
-        </nav>
-        <div class="container mx-auto p-4">{content}</div>
-    </body></html>"""
+@bot.message_handler(func=lambda m: message.chat.id in user_states)
+def movie_flow(message):
+    state = user_states[message.chat.id]
+    if state['step'] == 'name':
+        state['data']['name'] = message.text
+        state['step'] = 'poster'
+        bot.send_message(message.chat.id, "মুভির পোস্টার (ছবি) পাঠান:")
+    elif state['step'] == 'poster' and message.content_type == 'photo':
+        fid = message.photo[-1].file_id
+        finfo = bot.get_file(fid)
+        # টেলগ্রাম সার্ভার থেকে ডিরেক্ট ইউআরএল জেনারেট
+        state['data']['poster'] = f"https://api.telegram.org/file/bot{TOKEN}/{finfo.file_path}"
+        state['step'] = 'episodes'
+        state['data']['episodes'] = []
+        markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True).add("Done ✅")
+        bot.send_message(message.chat.id, "এখন একটির পর একটি ফাইল পাঠান। শেষ হলে 'Done ✅' দিন।", reply_markup=markup)
+    elif state['step'] == 'episodes':
+        if message.text == "Done ✅":
+            movies_col.insert_one(state['data'])
+            bot.send_message(message.chat.id, "মুভি সাইটে সফলভাবে আপলোড হয়েছে!", reply_markup=telebot.types.ReplyKeyboardRemove())
+            del user_states[message.chat.id]
+        elif message.document:
+            state['data']['episodes'].append({'name': message.document.file_name, 'file_id': message.document.file_id})
+            bot.send_message(message.chat.id, f"সংযুক্ত হয়েছে: {message.document.file_name}")
 
-# --- AUTH ROUTES ---
-@app.get("/")
-async def index(): return RedirectResponse("/login")
+# ==========================================
+# [FEATURE #9] অ্যাডমিন সেটিংস পরিবর্তন (Menu থেকে)
+# ==========================================
+@bot.message_handler(func=lambda m: m.text == "Ad Settings ⚙️")
+def change_ads(message):
+    if not is_admin(message): return
+    msg = bot.send_message(message.chat.id, "Terazone ID এবং Ad Link দিন (স্পেস দিয়ে আলাদা করুন):")
+    bot.register_next_step_handler(msg, save_ads)
 
-@app.get("/register", response_class=HTMLResponse)
-async def reg_ui():
-    return layout("""
-    <div class="max-w-md mx-auto bg-gray-800 p-6 rounded shadow-lg mt-10">
-        <h2 class="text-2xl font-bold mb-4">রেজিস্ট্রেশন</h2>
-        <form action="/register" method="post" class="space-y-4">
-            <input name="f" placeholder="First Name" class="w-full p-2 bg-gray-700 rounded" required>
-            <input name="l" placeholder="Last Name" class="w-full p-2 bg-gray-700 rounded" required>
-            <input name="m" placeholder="Mobile Number" class="w-full p-2 bg-gray-700 rounded" required>
-            <input name="p" type="password" placeholder="Password" class="w-full p-2 bg-gray-700 rounded" required>
-            <button class="w-full bg-green-600 p-2 rounded">Register</button>
-        </form>
-    </div>""")
+def save_ads(message):
+    try:
+        tid, alink = message.text.split(' ')
+        settings_col.update_one({"type": "config"}, {"$set": {"terazone_id": tid, "ad_link": alink}})
+        bot.reply_to(message, "সেটিংস আপডেট হয়েছে!")
+    except: bot.reply_to(message, "ভুল ফরম্যাট!")
 
-@app.post("/register")
-async def register(f:str=Form(...), l:str=Form(...), m:str=Form(...), p:str=Form(...)):
-    if await db.users.find_one({"mobile": m}): return "Mobile exists!"
-    await db.users.insert_one({"name": f"{f} {l}", "mobile": m, "password": p, "coins": 0, "premium": None})
-    return RedirectResponse("/login", status_code=303)
+# ==========================================
+# [FEATURE #10] আনলিমিটেড টাস্ক অ্যাড (Direct/Monetag)
+# [FEATURE #11] আনলিমিটেড টাস্ক ডিলিট সিস্টেম
+# [FEATURE #12] আনলিমিটেড প্রিমিয়াম প্যাকেজ অ্যাড
+# [FEATURE #13] আনলিমিটেড প্যাকেজ ডিলিট সিস্টেম
+# ==========================================
+@bot.message_handler(func=lambda m: m.text == "Add Task 📝")
+def add_task(message):
+    if not is_admin(message): return
+    msg = bot.send_message(message.chat.id, "টাস্ক ডাটা দিন: Type(direct/monetag) | Title | Content | Coins")
+    bot.register_next_step_handler(msg, lambda m: save_item(m, tasks_col))
 
-@app.get("/login", response_class=HTMLResponse)
-async def login_ui():
-    return layout('<div class="max-w-md mx-auto bg-gray-800 p-6 mt-10 rounded shadow-lg"><h2 class="text-2xl font-bold mb-4 text-center">লগইন</h2><form action="/login" method="post" class="space-y-4"><input name="m" placeholder="Mobile" class="w-full p-2 bg-gray-700 rounded" required><input name="p" type="password" placeholder="Password" class="w-full p-2 bg-gray-700 rounded" required><button class="w-full bg-blue-600 p-2 rounded font-bold">Login</button></form></div>')
+@bot.message_handler(func=lambda m: m.text == "Add Package 🎁")
+def add_pkg(message):
+    if not is_admin(message): return
+    msg = bot.send_message(message.chat.id, "প্যাকেজ ডাটা দিন: Name | Days | Coins")
+    bot.register_next_step_handler(msg, lambda m: save_item(m, packages_col))
 
-@app.post("/login")
-async def login(request: Request, m:str=Form(...), p:str=Form(...)):
-    u = await db.users.find_one({"mobile": m, "password": p})
-    if u:
-        request.session["uid"] = str(u["_id"])
-        return RedirectResponse("/home", status_code=303)
-    return "Invalid Mobile or Password"
-
-# --- HOME & PAGINATION ---
-@app.get("/home", response_class=HTMLResponse)
-async def home(request: Request, page: int = 1):
-    if "uid" not in request.session: return RedirectResponse("/login")
-    limit = 30
-    skip = (page-1)*limit
-    movies = await db.movies.find().sort("date", -1).skip(skip).limit(limit).to_list(length=limit)
-    
-    cards = '<div class="grid grid-cols-2 md:grid-cols-5 gap-4">'
-    for m in movies:
-        cards += f"""<div class="bg-gray-800 p-2 rounded shadow-lg"><img src="{m['poster']}" class="w-full h-40 object-cover rounded">
-        <p class="mt-2 text-sm truncate font-bold">{m['title']}</p><a href="/movie/{m['_id']}" class="block bg-blue-600 text-center text-xs py-1 mt-2 rounded">Watch Now</a></div>"""
-    cards += '</div>'
-    
-    nav = f'<div class="flex justify-center mt-10 space-x-4"><a href="/home?page={max(1, page-1)}" class="bg-gray-700 px-4 py-2 rounded">Preview</a>'
-    nav += f'<span class="py-2">Page {page}</span><a href="/home?page={page+1}" class="bg-gray-700 px-4 py-2 rounded">Next</a></div>'
-    return layout(cards + nav)
-
-@app.get("/movie/{mid}", response_class=HTMLResponse)
-async def movie_detail(request: Request, mid: str):
-    m = await db.movies.find_one({"_id": ObjectId(mid)})
-    u = await db.users.find_one({"_id": ObjectId(request.session["uid"])})
-    ads = await db.settings.find_one({"type": "ads"}) or {"ads_id": "#", "zone_id": "#"}
-    
-    premium = u.get("premium") and u["premium"] > datetime.now()
-    ad_url = f"https://{ads['ads_id']}.com/{ads['zone_id']}"
-    
-    eps = ""
-    for i, ep in enumerate(m["episodes"]):
-        link = f"/play/{mid}/{i}" if premium else ad_url
-        target = "" if premium else 'target="_blank"'
-        eps += f'<a href="{link}" {target} class="block bg-gray-800 p-4 mb-2 rounded border-l-4 border-blue-500 hover:bg-gray-700 transition">{ep["name"]}</a>'
-    
-    return layout(f'<img src="{m["poster"]}" class="w-full h-64 object-cover rounded-xl mb-4"><h1 class="text-3xl font-bold mb-6">{m["title"]}</h1>{eps}')
-
-# --- TASK SYSTEM ---
-@app.get("/tasks", response_class=HTMLResponse)
-async def tasks_page(request: Request):
-    u = await db.users.find_one({"_id": ObjectId(request.session["uid"])})
-    ts = await db.tasks.find().to_list(length=100)
-    
-    html = f'<div class="bg-blue-900 p-4 rounded text-center mb-6 font-bold">Balance: {u["coins"]} Coins</div>'
-    for t in ts:
-        if t["type"] == "monetag":
-            btn = f'<button onclick="doAd(\'{t["link"]}\', \'{t["_id"]}\')" class="bg-red-600 px-4 py-1 rounded">Watch Ad</button>'
+def save_item(message, col):
+    try:
+        p = message.text.split('|')
+        if col == tasks_col:
+            col.insert_one({"type": p[0].strip(), "title": p[1].strip(), "content": p[2].strip(), "coins": int(p[3].strip())})
         else:
-            btn = f'<a href="{t["link"]}" onclick="setTimeout(()=>{{location.href=\'/complete/{t["_id"]}\'}}, 8000)" target="_blank" class="bg-green-600 px-4 py-1 rounded text-sm">Visit Link</a>'
-        html += f'<div class="bg-gray-800 p-4 flex justify-between items-center mb-2 rounded"><span>{t["name"]} ({t["coins"]} Coins)</span>{btn}</div>'
+            col.insert_one({"name": p[0].strip(), "days": int(p[1].strip()), "price": int(p[2].strip())})
+        bot.reply_to(message, "সফলভাবে সেভ হয়েছে!")
+    except: bot.reply_to(message, "ভুল ফরম্যাট!")
+
+@bot.message_handler(func=lambda m: m.text in ["Delete Task ❌", "Delete Package 🗑️"])
+def delete_list(message):
+    if not is_admin(message): return
+    col = tasks_col if "Task" in message.text else packages_col
+    for item in col.find():
+        btn = telebot.types.InlineKeyboardMarkup().add(telebot.types.InlineKeyboardButton("Delete", callback_data=f"del_{'t' if col==tasks_col else 'p'}_{item['_id']}"))
+        bot.send_message(message.chat.id, f"Item: {item.get('title') or item.get('name')}", reply_markup=btn)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("del_"))
+def handle_del(call):
+    _, type, oid = call.data.split('_')
+    (tasks_col if type=='t' else packages_col).delete_one({"_id": ObjectId(oid)})
+    bot.answer_callback_query(call.id, "Deleted!")
+    bot.delete_message(call.message.chat.id, call.message.message_id)
+
+# ==========================================
+# [FEATURE #14] বাধ্যতামূলক রেজিস্ট্রেশন (First/Last Name, Mobile, Pass)
+# [FEATURE #15] লগইন সিস্টেম (Mobile & Password)
+# ==========================================
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    if request.method == 'POST':
+        if users_col.find_one({"mobile": request.form['mobile']}): return "Mobile already registered!"
+        users_col.insert_one({
+            "fname": request.form['fname'], "lname": request.form['lname'],
+            "mobile": request.form['mobile'], "password": request.form['password'],
+            "coins": 0, "premium_until": None
+        })
+        return redirect(url_for('login'))
+    return render_template('signup.html')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        u = users_col.find_one({"mobile": request.form['mobile'], "password": request.form['password']})
+        if u:
+            session['user_id'] = str(u['_id'])
+            return redirect(url_for('home'))
+        return "Invalid credentials!"
+    return render_template('login.html')
+
+# ==========================================
+# [FEATURE #16] হোম পেজ (৩০টি মুভি লিমিট)
+# [FEATURE #17] পেজিনেশন সিস্টেম (1, 2, 3, Next, Prev)
+# ==========================================
+@app.route('/')
+def home():
+    if 'user_id' not in session: return redirect(url_for('login'))
+    page = int(request.args.get('page', 1))
+    limit = 30
+    skip = (page - 1) * limit
+    total = movies_col.count_documents({})
+    movies = movies_col.find().sort('_id', DESCENDING).skip(skip).limit(limit)
+    return render_template('index.html', movies=movies, page=page, total_pages=math.ceil(total/limit))
+
+# ==========================================
+# [FEATURE #18] প্রোফাইল আপডেট (ব্যালেন্স ও তথ্য পরিবর্তন)
+# ==========================================
+@app.route('/profile', methods=['GET', 'POST'])
+def profile():
+    if 'user_id' not in session: return redirect(url_for('login'))
+    u = users_col.find_one({"_id": ObjectId(session['user_id'])})
+    if request.method == 'POST':
+        users_col.update_one({"_id": u['_id']}, {"$set": {"fname": request.form['fname'], "password": request.form['password']}})
+        return redirect(url_for('profile'))
+    return render_template('profile.html', user=u)
+
+# ==========================================
+# [FEATURE #19] টাস্ক থেকে কয়েন ইনকাম সিস্টেম
+# ==========================================
+@app.route('/tasks')
+def tasks_page():
+    if 'user_id' not in session: return redirect(url_for('login'))
+    return render_template('tasks.html', tasks=tasks_col.find())
+
+@app.route('/claim/<tid>')
+def claim_coin(tid):
+    t = tasks_col.find_one({"_id": ObjectId(tid)})
+    users_col.update_one({"_id": ObjectId(session['user_id'])}, {"$inc": {"coins": t['coins']}})
+    return redirect(url_for('tasks_page'))
+
+# ==========================================
+# [FEATURE #20] প্রিমিয়াম বাই এবং অ্যাড রিমুভ লজিক
+# ==========================================
+@app.route('/premium')
+def premium_store():
+    if 'user_id' not in session: return redirect(url_for('login'))
+    u = users_col.find_one({"_id": ObjectId(session['user_id'])})
+    return render_template('premium.html', pkgs=packages_col.find(), user=u)
+
+@app.route('/buy/<pid>')
+def buy_pkg(pid):
+    p = packages_col.find_one({"_id": ObjectId(pid)})
+    u = users_col.find_one({"_id": ObjectId(session['user_id'])})
+    if u['coins'] >= p['price']:
+        expiry = datetime.now() + timedelta(days=p['days'])
+        users_col.update_one({"_id": u['_id']}, {"$inc": {"coins": -p['price']}, "$set": {"premium_until": expiry}})
+        return redirect(url_for('profile'))
+    return "Not enough coins!"
+
+@app.route('/movie/<id>')
+def movie_details(id):
+    if 'user_id' not in session: return redirect(url_for('login'))
+    m = movies_col.find_one({"_id": ObjectId(id)})
+    c = settings_col.find_one({"type": "config"})
+    u = users_col.find_one({"_id": ObjectId(session['user_id'])})
+    is_premium = u.get('premium_until') and u['premium_until'] > datetime.now()
+    return render_template('details.html', movie=m, config=c, is_premium=is_premium)
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+# --- টেমপ্লেট জেনারেটর (UI) ---
+def create_templates():
+    if not os.path.exists('templates'): os.makedirs('templates')
+    css = "<style>body{background:#000;color:#fff;font-family:sans-serif;text-align:center;margin:0;padding-bottom:80px}.nav{background:#111;position:fixed;bottom:0;width:100%;display:flex;justify-content:space-around;padding:15px;border-top:1px solid gold}.nav a{color:gold;text-decoration:none;font-size:12px;font-weight:bold}.card{background:#1a1a1a;margin:10px;padding:10px;border-radius:10px;border:1px solid #333}.btn{display:block;background:gold;color:#000;padding:12px;margin:10px auto;text-decoration:none;border-radius:5px;width:85%;font-weight:bold;border:none}.inp{width:85%;padding:12px;margin:10px;border-radius:5px;border:none;background:#222;color:#fff}</style>"
+    nav = '<div class="nav"><a href="/">হোম</a><a href="/tasks">টাস্ক</a><a href="/premium">প্রিমিয়াম</a><a href="/profile">প্রোফাইল</a></div>'
+
+    # Signup
+    with open('templates/signup.html', 'w', encoding='utf-8') as f:
+        f.write(f'<html>{css}<body><h2>রেজিস্ট্রেশন</h2><form method="POST"><input name="fname" placeholder="First Name" class="inp" required><input name="lname" placeholder="Last Name" class="inp" required><input name="mobile" placeholder="Mobile" class="inp" required><input name="password" type="password" placeholder="Password" class="inp" required><button class="btn">Register</button></form><a href="/login" style="color:white">Login</a></body></html>')
     
-    html += "<script>function doAd(url, id){ window.open(url, '_blank'); setTimeout(()=>{location.href='/complete/'+id}, 10000); }</script>"
-    return layout(html)
+    # Login
+    with open('templates/login.html', 'w', encoding='utf-8') as f:
+        f.write(f'<html>{css}<body><h2>লগইন</h2><form method="POST"><input name="mobile" placeholder="Mobile" class="inp" required><input name="password" type="password" placeholder="Password" class="inp" required><button class="btn">Login</button></form><a href="/signup" style="color:white">Signup</a></body></html>')
 
-@app.get("/complete/{tid}")
-async def complete(request: Request, tid: str):
-    t = await db.tasks.find_one({"_id": ObjectId(tid)})
-    await db.users.update_one({"_id": ObjectId(request.session["uid"])}, {"$inc": {"coins": int(t["coins"])}})
-    return RedirectResponse("/tasks")
+    # Home
+    with open('templates/index.html', 'w', encoding='utf-8') as f:
+        f.write(f'<html>{css}<body><h2>Movies</h2><div style="display:grid;grid-template-columns:1fr 1fr">{"{% for m in movies %}"}<div class="card"><img src="{"{{m.poster}}"}" width="100%"><p>{"{{m.name}}"}</p><a href="/movie/{"{{m._id}}"}" class="btn">WATCH</a></div>{"{% endfor %}"}</div>' +
+                '<div>{"{% if page > 1 %}"}<a href="/?page={"{{page-1}}"}" style="color:white">Prev</a>{"{% endif %}"} Page {"{{page}}"} {"{% if page < total_pages %}"}<a href="/?page={"{{page+1}}"}" style="color:white">Next</a>{"{% endif %}"}</div>' + nav + '</body></html>')
 
-# --- PROFILE & PREMIUM ---
-@app.get("/profile", response_class=HTMLResponse)
-async def profile(request: Request):
-    u = await db.users.find_one({"_id": ObjectId(request.session["uid"])})
-    return layout(f"""
-    <div class="max-w-md mx-auto bg-gray-800 p-6 rounded shadow-lg mt-10">
-        <h2 class="text-2xl font-bold mb-6">Profile</h2>
-        <form action="/profile/update" method="post" class="space-y-4">
-            <div><label>Full Name</label><input name="n" value="{u['name']}" class="w-full p-2 bg-gray-700 rounded"></div>
-            <div><label>Mobile Number</label><input value="{u['mobile']}" class="w-full p-2 bg-gray-900 rounded" disabled></div>
-            <div><label>New Password</label><input name="p" type="password" placeholder="New Password" class="w-full p-2 bg-gray-700 rounded"></div>
-            <p class="text-yellow-500 font-bold">Balance: {u['coins']} Coins</p>
-            <button class="w-full bg-orange-600 p-2 rounded font-bold">Update Profile</button>
-        </form>
-        <a href="/logout" class="block text-center mt-6 text-red-500 font-bold">Logout</a>
-    </div>""")
+    # Details
+    with open('templates/details.html', 'w', encoding='utf-8') as f:
+        f.write(f'<html>{css}<body><img src="{"{{movie.poster}}"}" width="100%"><h2>{"{{movie.name}}"}</h2>' +
+                '{"{% for ep in movie.episodes %}"}' +
+                '{"{% if is_premium %}"}<a href="https://t.me/share/url?url=FILE_ID_{{"{{ep.file_id}}"}}" class="btn">{"{{ep.name}}"} (No Ads)</a>' +
+                '{"{% else %}"}<a href="{{"{{config.ad_link}}"}}?zone={{"{{config.terazone_id}}"}}&file={{"{{ep.file_id}}"}}" class="btn">{"{{ep.name}}"} (Watch Ad)</a>{"{% endif %}"}' +
+                '{"{% endfor %}"}' + nav + '</body></html>')
 
-@app.post("/profile/update")
-async def update_profile(request: Request, n:str=Form(...), p:str=Form(None)):
-    update = {"name": n}
-    if p: update["password"] = p
-    await db.users.update_one({"_id": ObjectId(request.session["uid"])}, {"$set": update})
-    return RedirectResponse("/profile")
+    # Profile, Tasks, Premium (Simplified UI)
+    with open('templates/profile.html', 'w', encoding='utf-8') as f:
+        f.write(f'<html>{css}<body><h2>Profile</h2><div class="card"><p>Coins: {"{{user.coins}}"}</p><form method="POST"><input name="fname" value="{"{{user.fname}}"}" class="inp"><input name="password" value="{"{{user.password}}"}" class="inp"><button class="btn">Update</button></form><a href="/logout">Logout</a></div>' + nav + '</body></html>')
+    
+    with open('templates/tasks.html', 'w', encoding='utf-8') as f:
+        f.write(f'<html>{css}<body><h2>Tasks</h2>{"{% for t in tasks %}"}<div class="card"><h4>{"{{t.title}}"}</h4>' +
+                '{"{% if t.type == \'direct\' %}"}<a href="{{"{{t.content}}"}}" target="_blank" onclick="location.href=\'/claim/{{"{{t._id}}"}}\'" class="btn">Complete</a>' +
+                '{"{% else %}"}<button onclick="eval(\'{{"{{t.content}}"}}\'); location.href=\'/claim/{{"{{t._id}}"}}\'" class="btn">Watch Ad</button>{"{% endif %}"}</div>{"{% endfor %}"}' + nav + '</body></html>')
+    
+    with open('templates/premium.html', 'w', encoding='utf-8') as f:
+        f.write(f'<html>{css}<body><h2>Premium Store</h2><p>Balance: {"{{user.coins}}"}</p>{"{% for p in pkgs %}"}<div class="card"><h4>{"{{p.name}}"}</h4><p>{"{{p.days}}"} Days - {"{{p.price}}"} Coins</p><a href="/buy/{"{{p._id}}"}" class="btn">Buy Now</a></div>{"{% endfor %}"}' + nav + '</body></html>')
 
-@app.get("/premium", response_class=HTMLResponse)
-async def premium_ui(request: Request):
-    pkgs = await db.packages.find().to_list(length=100)
-    html = '<div class="grid grid-cols-1 gap-4">'
-    for p in pkgs:
-        html += f'<div class="bg-gray-800 p-6 rounded flex justify-between items-center border border-yellow-600"><div><p class="text-xl font-bold">{p["days"]} Days Pack</p><p>{p["price"]} Coins</p></div><a href="/buy/{p["_id"]}" class="bg-yellow-600 text-black px-6 py-2 rounded font-bold">Buy</a></div>'
-    return layout(f'<h2 class="text-2xl font-bold mb-6">💎 প্রিমিয়াম কিনুন</h2>{html or "প্যাকেজ নেই"}')
-
-@app.get("/buy/{pid}")
-async def buy_pkg(request: Request, pid: str):
-    u = await db.users.find_one({"_id": ObjectId(request.session["uid"])})
-    p = await db.packages.find_one({"_id": ObjectId(pid)})
-    if u["coins"] >= int(p["price"]):
-        exp = datetime.now() + timedelta(days=int(p["days"]))
-        await db.users.update_one({"_id": u["_id"]}, {"$inc": {"coins": -int(p["price"])}, "$set": {"premium": exp}})
-        return RedirectResponse("/profile")
-    return "Insufficient Balance!"
-
-# --- ADMIN PANEL ---
-@app.get("/admin", response_class=HTMLResponse)
-async def admin_log():
-    return layout('<div class="max-w-sm mx-auto mt-20"><form action="/admin" method="post" class="bg-gray-800 p-6 rounded shadow-xl"><h2 class="mb-4 font-bold">Admin Login</h2><input name="pw" type="password" class="w-full p-2 bg-gray-700 rounded mb-4" required><button class="bg-red-600 w-full p-2 rounded">Login</button></form></div>')
-
-@app.post("/admin")
-async def admin_auth(request: Request, pw: str = Form(...)):
-    if pw == ADMIN_WEB_PASS:
-        request.session["admin"] = True
-        return RedirectResponse("/admin/dashboard")
-    return "Access Denied"
-
-@app.get("/admin/dashboard", response_class=HTMLResponse)
-async def admin_dashboard(request: Request):
-    if not request.session.get("admin"): return "Unauthorized"
-    return layout("""
-    <h2 class="text-2xl font-bold mb-6">Admin Panel</h2>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div class="bg-gray-800 p-4 rounded shadow-xl">
-            <h3 class="font-bold mb-4">Ad Settings</h3>
-            <form action="/admin/set-ads" method="post" class="space-y-4">
-                <input name="aid" placeholder="Ad Link/ID" class="w-full p-2 bg-gray-700">
-                <input name="zid" placeholder="Zone ID" class="w-full p-2 bg-gray-700">
-                <button class="bg-blue-600 w-full p-2 rounded">Save Ads Data</button>
-            </form>
-        </div>
-        <div class="bg-gray-800 p-4 rounded shadow-xl">
-            <h3 class="font-bold mb-4">Add Task</h3>
-            <form action="/admin/add-task" method="post" class="space-y-2">
-                <input name="n" placeholder="Task Name" class="w-full p-2 bg-gray-700">
-                <select name="t" class="w-full p-2 bg-gray-700"><option value="direct">Direct</option><option value="monetag">Monetag</option></select>
-                <input name="l" placeholder="Link/Script" class="w-full p-2 bg-gray-700">
-                <input name="c" placeholder="Coins" class="w-full p-2 bg-gray-700">
-                <button class="bg-green-600 w-full p-2 rounded">Add Task</button>
-            </form>
-        </div>
-        <div class="bg-gray-800 p-4 rounded shadow-xl">
-            <h3 class="font-bold mb-4">Add Package</h3>
-            <form action="/admin/add-pkg" method="post" class="space-y-2">
-                <input name="d" placeholder="Validity Days" class="w-full p-2 bg-gray-700">
-                <input name="p" placeholder="Price (Coins)" class="w-full p-2 bg-gray-700">
-                <button class="bg-yellow-600 text-black w-full p-2 rounded font-bold">Add Package</button>
-            </form>
-        </div>
-    </div>
-    """)
-
-@app.post("/admin/set-ads")
-async def set_ads(aid:str=Form(...), zid:str=Form(...)):
-    await db.settings.update_one({"type":"ads"}, {"$set":{"ads_id":aid, "zone_id":zid}}, upsert=True)
-    return RedirectResponse("/admin/dashboard", status_code=303)
-
-@app.post("/admin/add-task")
-async def add_task(n:str=Form(...), t:str=Form(...), l:str=Form(...), c:str=Form(...)):
-    await db.tasks.insert_one({"name":n, "type":t, "link":l, "coins":c})
-    return RedirectResponse("/admin/dashboard", status_code=303)
-
-@app.post("/admin/add-pkg")
-async def add_pkg(d:str=Form(...), p:str=Form(...)):
-    await db.packages.insert_one({"days":d, "price":p})
-    return RedirectResponse("/admin/dashboard", status_code=303)
-
-@app.get("/logout")
-async def logout(request: Request):
-    request.session.clear()
-    return RedirectResponse("/login")
-
-# --- SERVER START ---
-if __name__ == "__main__":
-    import threading
-    threading.Thread(target=lambda: bot.run_until_disconnected(), daemon=True).start()
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+if __name__ == '__main__':
+    create_templates()
+    Thread(target=lambda: bot.polling(none_stop=True)).start()
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
