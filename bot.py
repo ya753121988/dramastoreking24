@@ -81,6 +81,7 @@ CSS = """
 # ==========================================
 # ৩. ইউজার প্যানেল লেআউট (Home, Profile, Tasks, Premium)
 # ==========================================
+# FIX: 'content' ব্লকের ডুপ্লিকেট এরর এড়াতে এখান থেকে মেইন ব্লকের নাম মুছে দেওয়া হয়েছে
 USER_LAYOUT = """
 <!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="https://cdn.tailwindcss.com"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -90,7 +91,9 @@ USER_LAYOUT = """
     <div class="text-right"><span class="text-blue-400 font-bold block text-sm">{{ config.site_name }}</span></div>
 </header>
 <div class="marquee"><p>📢 {{ config.header_notice }}</p></div>
-<main class="p-4 container mx-auto">{% block content %}{% endblock %}</main>
+<main class="p-4 container mx-auto">"""
+
+USER_FOOTER = """</main>
 <nav class="glass bottom-nav">
     <a href="/" class="{{ 'active' if act == 'home' }}"><i class="fas fa-home text-xl"></i><br>🏠 HOME</a>
     <a href="/tasks" class="{{ 'active' if act == 'task' }}"><i class="fas fa-tasks text-xl"></i><br>📅 TASK</a>
@@ -118,7 +121,6 @@ def home():
     movies = list(movies_col.find().sort('_id', -1).skip((page-1)*c['movies_per_page']).limit(c['movies_per_page']))
     for m in movies: m['_id'] = str(m['_id'])
     return render_template_string(USER_LAYOUT + """
-    {% block content %}
     <div class="grid-container">
         {% for m in movies %}
         <a href="/movie/{{ m._id }}" class="movie-card glass rounded-[25px] overflow-hidden block">
@@ -132,7 +134,7 @@ def home():
         <span class="text-blue-400 font-bold text-sm">🔢 Page {{ page }}</span>
         <a href="/?page={{ page+1 }}" class="glass px-5 py-2 rounded-xl text-xs">Next ➡️</a>
     </div>
-    {% endblock %}""", act='home', config=c, movies=movies, page=page, user=u)
+    """ + USER_FOOTER, act='home', config=c, movies=movies, page=page, user=u)
 
 @app.route('/movie/<id>')
 def movie_details(id):
@@ -140,11 +142,11 @@ def movie_details(id):
     if not u: return redirect('/login')
     try:
         m = movies_col.find_one({"_id": ObjectId(id)})
-    except: return redirect('/')
+    except:
+        return redirect('/')
     if not m: return redirect('/')
     c = settings_col.find_one({"type":"site_config"})
     return render_template_string(USER_LAYOUT + """
-    {% block content %}
     <div class="max-w-4xl mx-auto flex flex-col md:flex-row gap-8">
         <img src="{{ m.poster }}" class="w-full md:w-72 rounded-[35px] shadow-2xl border border-white/10">
         <div class="flex-1">
@@ -174,7 +176,7 @@ def movie_details(id):
         }
         function unlock() { fetch('/api/unlock', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mobile:'{{ user.mobile }}'})}).then(()=>location.reload()); }
     </script>
-    {% endblock %}""", act='home', config=c, m=m, user=u)
+    """ + USER_FOOTER, act='home', config=c, m=m, user=u)
 
 @app.route('/profile')
 def profile():
@@ -182,7 +184,6 @@ def profile():
     if not u: return redirect('/login')
     c = settings_col.find_one({"type":"site_config"})
     return render_template_string(USER_LAYOUT + """
-    {% block content %}
     <div class="max-w-md mx-auto glass p-10 rounded-[40px] text-center shadow-2xl">
         <div class="w-24 h-20 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-3xl mx-auto flex items-center justify-center text-4xl font-black mb-6 shadow-xl">{{ u.first_name[0] if u.first_name else 'U' }}</div>
         <h2 class="text-2xl font-black uppercase tracking-tighter">{{ u.first_name }} {{ u.last_name }}</h2>
@@ -200,7 +201,7 @@ def profile():
         </form>
         <a href="/logout" class="block mt-10 text-red-500 text-[10px] font-black uppercase tracking-widest hover:opacity-70 transition">Logout Account</a>
     </div>
-    {% endblock %}""", act='profile', config=c, user=u)
+    """ + USER_FOOTER, act='profile', config=c, user=u)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -260,7 +261,6 @@ def tasks():
     m_tasks = list(monetag_tasks_col.find())
     for t in m_tasks: t['_id'] = str(t['_id'])
     return render_template_string(USER_LAYOUT + """
-    {% block content %}
     <h2 class="text-xl font-bold mb-6 text-green-400 uppercase tracking-tighter">💰 Daily Income Tasks</h2>
     <div class="space-y-4">
         {% for t in d_tasks %}
@@ -284,7 +284,7 @@ def tasks():
         else { alert("Limit Reached or Error!"); }
     }
     </script>
-    {% endblock %}""", act='task', config=c, user=u, d_tasks=d_tasks, m_tasks=m_tasks)
+    """ + USER_FOOTER, act='task', config=c, user=u, d_tasks=d_tasks, m_tasks=m_tasks)
 
 @app.route('/premium')
 def premium_page():
@@ -294,7 +294,6 @@ def premium_page():
     plans = list(plans_col.find())
     for p in plans: p['_id'] = str(p['_id'])
     return render_template_string(USER_LAYOUT + """
-    {% block content %}
     <h2 class="text-xl font-bold mb-6 text-yellow-400 uppercase tracking-tighter">👑 Premium Member Plans</h2>
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
         {% for p in plans %}
@@ -315,12 +314,12 @@ def premium_page():
         alert(d.message); if(d.status==='success') location.reload();
     }
     </script>
-    {% endblock %}""", act='premium', config=c, user=u, plans=plans)
+    """ + USER_FOOTER, act='premium', config=c, user=u, plans=plans)
 
 # ==========================================
 # ৫. মেগা অ্যাডমিন ড্যাশবোর্ড (সব মেনুসহ)
 # ==========================================
-
+# FIX: 'admin_content' ডুপ্লিকেট এরর এড়াতে এখান থেকে ব্লকের নাম মুছে দেওয়া হয়েছে
 ADMIN_LAYOUT = """
 <!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="https://cdn.tailwindcss.com"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -338,9 +337,9 @@ ADMIN_LAYOUT = """
         <a href="/admin/logout" class="p-3 text-red-500 mt-12 bg-red-500/10 rounded-xl"><i class="fas fa-sign-out-alt mr-3"></i> LOGOUT ADMIN</a>
     </nav>
 </div>
-<div class="flex-1 p-6 space-y-12 overflow-y-auto">{% block admin_content %}{% endblock %}</div>
-</body></html>
-"""
+<div class="flex-1 p-6 space-y-12 overflow-y-auto">"""
+
+ADMIN_FOOTER = """</div></body></html>"""
 
 @app.route('/admin', methods=['GET', 'POST'])
 def admin_login():
@@ -368,7 +367,6 @@ def admin_dashboard():
     m_tasks = list(monetag_tasks_col.find())
     for x in m_tasks: x['_id'] = str(x['_id'])
     return render_template_string(ADMIN_LAYOUT + """
-    {% block admin_content %}
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-6">
         <div class="glass p-6 rounded-[30px] text-center border-b-4 border-blue-500 shadow-xl"><p class="text-[9px] text-gray-500 uppercase font-black">Users</p><p class="text-3xl font-black text-blue-400">{{ u_count }}</p></div>
         <div class="glass p-6 rounded-[30px] text-center border-b-4 border-green-500 shadow-xl"><p class="text-[9px] text-gray-500 uppercase font-black">Movies</p><p class="text-3xl font-black text-green-400">{{ m_count }}</p></div>
@@ -412,6 +410,39 @@ def admin_dashboard():
         </form>
     </section>
 
+    <!-- Direct Tasks -->
+    <section id="tasks" class="glass p-10 rounded-[40px] border border-green-500/10">
+        <h2 class="text-xl font-black mb-8 text-green-500 border-b border-white/5 pb-3 uppercase">Direct Link Income Tasks</h2>
+        <form action="/admin/task/add" method="POST" class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <input type="text" name="link" placeholder="Direct Ad/Task Link" class="md:col-span-2" required>
+            <input type="number" name="coins" placeholder="Coins" required>
+            <input type="number" name="limit" placeholder="Limit" required>
+            <button class="btn-blue bg-green-600 md:col-span-4 font-black">ADD DIRECT TASK</button>
+        </form>
+        <div class="space-y-2">{% for t in d_tasks %}<div class="bg-black/30 p-3 rounded-xl flex justify-between text-xs"><span>{{ t.link[:40] }}.. (+{{ t.coins }} C)</span><a href="/admin/task/delete/{{ t._id }}" class="text-red-500"><i class="fas fa-trash-alt"></i></a></div>{% endfor %}</div>
+    </section>
+
+    <!-- Monetag Ad Tasks -->
+    <section id="monetag_ads" class="glass p-10 rounded-[40px] border border-yellow-500/10">
+        <h2 class="text-xl font-black mb-8 text-yellow-500 border-b border-white/5 pb-3 uppercase">Monetag Watch Ad Tasks</h2>
+        <form action="/admin/monetag/add" method="POST" class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <input type="text" name="zone_id" placeholder="Monetag Zone ID" class="md:col-span-2" required>
+            <input type="number" name="coins" placeholder="Coins" required>
+            <input type="number" name="limit" placeholder="Limit" required>
+            <button class="btn-blue bg-yellow-600 md:col-span-4 font-black text-black">ADD WATCH AD TASK</button>
+        </form>
+        <div class="space-y-2">{% for mt in m_tasks %}<div class="bg-black/30 p-3 rounded-xl flex justify-between text-xs"><span>Zone: {{ mt.zone_id }} (+{{ mt.coins }} C)</span><a href="/admin/monetag/delete/{{ mt._id }}" class="text-red-500"><i class="fas fa-trash-alt"></i></a></div>{% endfor %}</div>
+    </section>
+
+    <!-- Premium Plans -->
+    <section id="plans" class="glass p-10 rounded-[40px] border border-purple-500/10">
+        <h2 class="text-xl font-black mb-8 text-purple-400 border-b border-white/5 pb-3 uppercase">Premium Member Plans</h2>
+        <form action="/admin/add-plan" method="POST" class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
+            <input type="number" name="days" placeholder="Days" required><input type="number" name="coins" placeholder="Coins" required><button class="btn-blue bg-purple-600 font-black">ADD PLAN</button>
+        </form>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3">{% for p in plans %}<div class="bg-black/30 p-4 rounded-[25px] flex justify-between items-center text-xs"><span>{{ p.days }} Days / {{ p.coins }} C</span><a href="/admin/plan/delete/{{ p._id }}" class="text-red-500"><i class="fas fa-trash-alt"></i></a></div>{% endfor %}</div>
+    </section>
+
     <!-- Global Settings -->
     <section id="settings" class="glass p-10 rounded-[40px]">
         <h2 class="text-xl font-black mb-8 text-white border-b border-white/5 pb-3 uppercase">Global Site Settings</h2>
@@ -427,7 +458,7 @@ def admin_dashboard():
             </div>
         </form>
     </section>
-    {% endblock %}""", config=c, ep_c=ep_c, movies=m, u_count=users_col.count_documents({}), m_count=len(m), plans=plans, d_tasks=d_tasks, m_tasks=m_tasks)
+    """ + ADMIN_FOOTER, config=c, ep_c=ep_c, movies=m, u_count=users_col.count_documents({}), m_count=len(m), plans=plans, d_tasks=d_tasks, m_tasks=m_tasks)
 
 # ==========================================
 # ৬. টেলিগ্রাম বট ও লজিক (OTP, `/movie`, চ্যানেল ফরওয়ার্ড)
@@ -532,7 +563,8 @@ def admin_del_movie(id):
     if not session.get('admin'): return redirect('/admin')
     try:
         movies_col.delete_one({"_id": ObjectId(id)})
-    except: pass
+    except:
+        pass
     return redirect('/admin/dashboard')
 
 @app.route('/admin/task/add', methods=['POST'])
@@ -541,8 +573,10 @@ def admin_add_task():
 
 @app.route('/admin/task/delete/<id>')
 def admin_del_task(id):
-    try: tasks_col.delete_one({"_id": ObjectId(id)})
-    except: pass
+    try:
+        tasks_col.delete_one({"_id": ObjectId(id)})
+    except:
+        pass
     return redirect('/admin/dashboard')
 
 @app.route('/admin/monetag/add', methods=['POST'])
@@ -551,8 +585,10 @@ def admin_add_monetag():
 
 @app.route('/admin/monetag/delete/<id>')
 def admin_del_monetag(id):
-    try: monetag_tasks_col.delete_one({"_id": ObjectId(id)})
-    except: pass
+    try:
+        monetag_tasks_col.delete_one({"_id": ObjectId(id)})
+    except:
+        pass
     return redirect('/admin/dashboard')
 
 @app.route('/admin/add-plan', methods=['POST'])
@@ -561,8 +597,10 @@ def admin_add_plan():
 
 @app.route('/admin/plan/delete/<id>')
 def admin_del_plan(id):
-    try: plans_col.delete_one({"_id": ObjectId(id)})
-    except: pass
+    try:
+        plans_col.delete_one({"_id": ObjectId(id)})
+    except:
+        pass
     return redirect('/admin/dashboard')
 
 @app.route('/admin/update-settings', methods=['POST'])
@@ -600,9 +638,8 @@ def api_buy_prem():
     d = request.json
     p = plans_col.find_one({"_id": ObjectId(d['plan_id'])})
     u = users_col.find_one({"mobile": d['mobile']})
-    if u.get('balance', 0) < int(p.get('coins', 0)): return jsonify({"status": "low", "message": "পর্যাপ্ত কয়েন নেই!"})
+    if not u or u.get('balance', 0) < int(p.get('coins', 0)): return jsonify({"status": "low", "message": "পর্যাপ্ত কয়েন নেই!"})
     
-    # প্রিমিয়াম এক্সপায়ারি লজিক ফিক্স
     current_expiry = u.get('premium_expiry')
     if not isinstance(current_expiry, datetime) or current_expiry < datetime.now():
         base_time = datetime.now()
@@ -641,6 +678,14 @@ def logout():
 @app.route('/admin/logout')
 def ad_logout():
     session.pop('admin', None); return redirect('/admin')
+
+@app.route('/api/webhook', methods=['POST'])
+def webhook_handler():
+    if request.headers.get('content-type') == 'application/json':
+        json_str = request.get_data().decode('utf-8')
+        update = telebot.types.Update.de_json(json_str)
+        bot.process_new_updates([update]); return ''
+    return 'Forbidden', 403
 
 # ==========================================
 # ১০. রান সিস্টেম
