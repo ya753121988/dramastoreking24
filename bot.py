@@ -1,546 +1,403 @@
 import os
-import telebot
-import random
-import string
-import time
-from pymongo import MongoClient
-from flask import Flask, jsonify, request, render_template_string, redirect, make_response, session
-from flask_cors import CORS
-from bson.objectid import ObjectId
+import asyncio
+import base64
+import json
 from datetime import datetime, timedelta
-from threading import Thread
+from bson import ObjectId
+from fastapi import FastAPI, Request, Form, Depends, HTTPException, status
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
+from motor.motor_asyncio import AsyncIOMotorClient
+from telethon import TelegramClient, events, Button
+import uvicorn
 
-# ==========================================
-# ১. কনফিগারেশন ও ডাটাবেস সেটআপ
-# ==========================================
-BOT_TOKEN = "8655043839:AAGMxkYoZXR-nUzlcapZZfVwci09Z6x0-UE"
-MONGO_URI = "mongodb+srv://drama:drama@cluster0.sa4kvgu.mongodb.net/?appName=Cluster0"
-FILE_CHANNEL_ID = -1003985353441 
-ADMIN_IDS = [7120801813]
-ADMIN_PASSWORD = "admin" # অ্যাডমিন প্যানেল পাসওয়ার্ড
-WEBHOOK_URL = "https://dramastoreking24.vercel.app/api/webhook"
+# --- কনফিগারেশন (এগুলো আপনার নিজের তথ্য দিয়ে পরিবর্তন করুন) ---
+API_ID = 29904834  # আপনার Telegram API ID
+API_HASH = '8b4fd9ef578af114502feeafa2d31938' # আপনার Telegram API Hash
+BOT_TOKEN = '8655043839:AAGmoyWwzJFAi9hOovKNeySOp6UzrHBPibQ' # আপনার Bot Token
+MONGO_URI = "mongodb+srv://drama:drama@cluster0.sa4kvgu.mongodb.net/?appName=Cluster0" # মংগোডিবি ইউআরআই
+ADMIN_ID = 7120801813 # আপনার টেলিগ্রাম ইউজার আইডি
+ADMIN_PASSWORD = "admin" # এডমিন প্যানেল পাসওয়ার্ড
+SECRET_KEY = "super-secret-key" # সেশন সিকিউরিটি
 
-client = MongoClient(MONGO_URI)
-db = client["movie_db"]
-movies_col = db["movies"]
-settings_col = db["settings"]
-users_col = db["users"]
-tasks_col = db["tasks"] # ডিরেক্ট লিংক টাস্ক
-monetag_tasks_col = db["monetag_tasks"] # মনিটেগ টাস্ক
-plans_col = db["premium_plans"]
-otp_col = db["otps"]
-ep_ads_col = db["episode_ads"] 
-ep_unlock_col = db["episode_unlocks"]
-user_tasks_history = db["user_tasks_history"]
+# --- অ্যাপ এবং ডাটাবেস সেটআপ ---
+app = FastAPI()
+app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
+client = AsyncIOMotorClient(MONGO_URI)
+db = client['MovieAppDB']
 
-app = Flask(__name__)
-app.secret_key = "ultimate_movie_secret_key"
-CORS(app)
-bot = telebot.TeleBot(BOT_TOKEN, threaded=False)
+# টেলিগ্রাম ক্লায়েন্ট
+tg_bot = TelegramClient('bot', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
-# ডিফল্ট সেটিংস সেটআপ
-def init_db():
-    if not settings_col.find_one({"type": "site_config"}):
-        settings_col.insert_one({
-            "type": "site_config", "site_name": "Drama Store", 
-            "site_logo": "https://via.placeholder.com/200x60?text=LOGO",
-            "header_notice": "আমাদের সাইটে স্বাগতম! একাউন্ট খুলে আনলিমিটেড মুভি দেখুন। 🍿",
-            "movies_per_page": 12
-        })
-    if not ep_ads_col.find_one({"type": "ep_ad_config"}):
-        ep_ads_col.insert_one({
-            "type": "ep_ad_config", "direct_link": "", "monetag_script": "", # আইডি বদলে স্ক্রিপ্ট ফিল্ড করা হয়েছে
-            "unlock_minutes": 30, "active_type": "off", "daily_limit": 10
-        })
+# --- বটের কাজ (Movie Upload System) ---
+user_states = {}
 
-init_db()
+@tg_bot.on(events.NewMessage(pattern='/movie'))
+async def start_movie_upload(event):
+    if event.sender_id != ADMIN_ID:
+        return await event.reply("❌ আপনি এডমিন নন!")
+    
+    user_states[event.sender_id] = {'step': 'name', 'episodes': []}
+    await event.reply("🎬 মুভির নাম লিখুন:")
 
-# ==========================================
-# ২. ডিজাইন (Responsive CSS)
-# ==========================================
-CSS = """
-<style>
-    :root { --primary: #3b82f6; --bg: #0b0f19; --glass: rgba(30, 41, 59, 0.7); }
-    body { background: var(--bg); color: white; font-family: 'Inter', sans-serif; margin:0; padding:0; overflow-x: hidden; }
-    .glass { background: var(--glass); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.05); }
-    .btn-blue { background: var(--primary); color: white; border-radius: 12px; font-weight: bold; padding: 12px; border:none; cursor:pointer; width:100%; transition: 0.3s; }
-    .movie-card img { transition: 0.5s; width:100%; aspect-ratio: 2/3; object-fit:cover; border-radius: 20px; }
-    .movie-card:hover img { transform: scale(1.05); }
-    .marquee { background: rgba(59, 130, 246, 0.1); padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.05); overflow: hidden; white-space: nowrap; }
-    .marquee p { display: inline-block; animation: marquee 20s linear infinite; font-size: 13px; color: #fbbf24; }
-    @keyframes marquee { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
-    .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-around; padding: 12px; z-index: 100; background: rgba(11, 15, 25, 0.95); backdrop-filter: blur(10px); border-top: 1px solid rgba(255,255,255,0.1); }
-    .bottom-nav a { text-decoration: none; color: #94a3b8; font-size: 10px; text-align: center; font-weight: bold; transition: 0.3s; }
-    .bottom-nav a.active { color: #3b82f6; transform: scale(1.1); }
-    input, textarea, select { background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 12px; border-radius: 12px; outline: none; width:100%; margin-bottom:10px; }
-    .grid-container { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
-    @media (min-width: 768px) { .grid-container { grid-template-columns: repeat(4, 1fr); } }
-    @media (min-width: 1024px) { .grid-container { grid-template-columns: repeat(6, 1fr); } }
-</style>
-"""
+@tg_bot.on(events.NewMessage)
+async def handle_upload(event):
+    state = user_states.get(event.sender_id)
+    if not state: return
 
-# ==========================================
-# ৩. ইউজার প্যানেল লেআউট
-# ==========================================
-# ডুপ্লিকেট ব্লকের এরর ফিক্স করতে লেআউটকে দুই ভাগে ভাগ করা হয়েছে কিন্তু ডিজাইন হুবহু একই আছে
-USER_HEAD = """
-<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<script src="https://cdn.tailwindcss.com"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-{{ ad_config.monetag_script | safe }}
-""" + CSS + """</head><body class="pb-24">
-<header class="glass sticky top-0 z-50 p-4 flex justify-between items-center shadow-xl">
-    <img src="{{ config.site_logo }}" class="h-8 md:h-10">
-    <div class="text-right"><span class="text-blue-400 font-bold block text-sm">{{ config.site_name }}</span></div>
-</header>
-<div class="marquee"><p>📢 {{ config.header_notice }}</p></div>
-<main class="p-4 container mx-auto">"""
+    if state['step'] == 'name':
+        state['name'] = event.text
+        state['step'] = 'poster'
+        await event.reply("🖼 মুভির পোস্টার (Direct Photo) দিন:")
+    
+    elif state['step'] == 'poster':
+        if event.photo:
+            path = await event.download_media(display_progress=False)
+            with open(path, "rb") as image_file:
+                encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+            state['poster_url'] = f"data:image/jpeg;base64,{encoded_string}"
+            os.remove(path)
+            state['step'] = 'episodes'
+            await event.reply("📎 এবার এক এক করে এপিসোড ফাইল দিন। সব দেয়া শেষ হলে নিচের 'DONE' বাটনে ক্লিক করুন।", 
+                             buttons=[Button.inline("✅ DONE", b"done_upload")])
+        else:
+            await event.reply("পিকচার দিন!")
 
-USER_FOOT = """</main>
-<nav class="glass bottom-nav">
-    <a href="/" class="{{ 'active' if act == 'home' }}"><i class="fas fa-home text-xl"></i><br>🏠 HOME</a>
-    <a href="/tasks" class="{{ 'active' if act == 'task' }}"><i class="fas fa-tasks text-xl"></i><br>📅 TASK</a>
-    <a href="/premium" class="{{ 'active' if act == 'premium' }}"><i class="fas fa-crown text-xl"></i><br>👑 PREMIUM</a>
-    <a href="/profile" class="{{ 'active' if act == 'profile' }}"><i class="fas fa-user text-xl"></i><br>👤 PROFILE</a>
-</nav>
-</body></html>"""
+    elif state['step'] == 'episodes':
+        if event.file:
+            # এখানে টেলিগ্রাম ফাইল আইডি স্টোর করা হচ্ছে
+            state['episodes'].append({
+                "name": f"Episode {len(state['episodes']) + 1}",
+                "file_id": event.file.id
+            })
+            await event.reply(f"✅ এপিসোড {len(state['episodes'])} যুক্ত হয়েছে। আরো দিন অথবা DONE চাপুন।")
 
-# ==========================================
-# ৪. ইউজার লজিক (লগইন, রেজিস্টার, মুভি, এপিআই)
-# ==========================================
-
-def get_user():
-    mob = request.cookies.get('mobile')
-    if not mob: return None
-    return users_col.find_one({"mobile": str(mob)})
-
-@app.route('/')
-def home():
-    u = get_user()
-    if not u: return redirect('/login')
-    c = settings_col.find_one({"type":"site_config"})
-    ad_c = ep_ads_col.find_one({"type":"ep_ad_config"})
-    page = int(request.args.get('page', 1))
-    movies = list(movies_col.find().sort('_id', -1).skip((page-1)*c['movies_per_page']).limit(c['movies_per_page']))
-    for m in movies: m['_id'] = str(m['_id'])
-    return render_template_string(USER_HEAD + """
-    <div class="grid-container">
-        {% for m in movies %}
-        <a href="/movie/{{ m._id }}" class="movie-card glass rounded-[25px] overflow-hidden block">
-            <img src="{{ m.poster }}">
-            <div class="p-3"><h3 class="text-[11px] font-bold truncate">{{ m.title }}</h3><p class="text-[9px] text-blue-400 uppercase font-black">{{ m.category }}</p></div>
-        </a>
-        {% endfor %}
-    </div>
-    <div class="mt-10 flex justify-center items-center gap-4">
-        {% if page > 1 %}<a href="/?page={{ page-1 }}" class="glass px-5 py-2 rounded-xl text-xs">⬅️ Preview</a>{% endif %}
-        <span class="text-blue-400 font-bold text-sm">🔢 Page {{ page }}</span>
-        <a href="/?page={{ page+1 }}" class="glass px-5 py-2 rounded-xl text-xs">Next ➡️</a>
-    </div>""" + USER_FOOT, act='home', config=c, movies=movies, page=page, user=u, ad_config=ad_c)
-
-@app.route('/movie/<id>')
-def movie_details(id):
-    u = get_user()
-    if not u: return redirect('/login')
-    try: m = movies_col.find_one({"_id": ObjectId(id)})
-    except: return redirect('/')
-    if not m: return redirect('/')
-    c = settings_col.find_one({"type":"site_config"})
-    ad_c = ep_ads_col.find_one({"type":"ep_ad_config"})
-    return render_template_string(USER_HEAD + """
-    <div class="max-w-4xl mx-auto flex flex-col md:flex-row gap-8">
-        <img src="{{ m.poster }}" class="w-full md:w-72 rounded-[35px] shadow-2xl border border-white/10">
-        <div class="flex-1">
-            <h1 class="text-4xl font-black mb-2 tracking-tighter">{{ m.title }}</h1>
-            <span class="bg-blue-600 px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest">{{ m.category }}</span>
-            <div class="mt-12">
-                <h4 class="text-gray-400 font-bold mb-6 border-l-4 border-blue-500 pl-3 uppercase text-[10px]">Episode List:</h4>
-                <div class="grid grid-cols-3 md:grid-cols-6 gap-3">
-                    {% for ep in m.episodes %}
-                    <button onclick="play('{{ ep.link }}')" class="glass p-3 rounded-2xl text-[10px] font-bold border-b-4 border-blue-500 hover:bg-blue-600 transition">EP {{ loop.index }}</button>
-                    {% endfor %}
-                </div>
-            </div>
-        </div>
-    </div>
-    <script>
-        async function play(l) {
-            const r = await fetch('/api/check-access', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mobile:'{{ user.mobile }}'})});
-            const d = await r.json();
-            if(d.status === 'unlocked') { window.open(l, '_blank'); }
-            else { 
-                alert("⚠️ বাটন আনলক করতে একটি এড দেখুন।"); 
-                if(d.ad_config.active_type === 'direct') { window.open(d.ad_config.direct_link, '_blank'); unlock(); }
-                else if(d.ad_config.active_type === 'monetag') {
-                    // মনিটেগ স্ক্রিপ্ট থাকলে অটো এড আসবে, তাই এখানে শুধু আনলক করা হচ্ছে
-                    unlock(); window.open(l, '_blank');
-                } else { window.open(l, '_blank'); }
-            }
+@tg_bot.on(events.CallbackQuery(data=b"done_upload"))
+async def finish_upload(event):
+    state = user_states.get(event.sender_id)
+    if state:
+        movie_data = {
+            "title": state['name'],
+            "poster": state['poster_url'],
+            "episodes": state['episodes'],
+            "created_at": datetime.now()
         }
-        function unlock() { fetch('/api/unlock', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mobile:'{{ user.mobile }}'})}).then(()=>location.reload()); }
-    </script>""" + USER_FOOT, act='home', config=c, m=m, user=u, ad_config=ad_c)
+        await db.movies.insert_one(movie_data)
+        del user_states[event.sender_id]
+        await event.edit("🚀 মুভিটি সফলভাবে সাইটে আপলোড করা হয়েছে!")
 
-@app.route('/profile')
-def profile():
-    u = get_user()
-    if not u: return redirect('/login')
-    c = settings_col.find_one({"type":"site_config"})
-    ad_c = ep_ads_col.find_one({"type":"ep_ad_config"})
-    return render_template_string(USER_HEAD + """
-    <div class="max-w-md mx-auto glass p-10 rounded-[40px] text-center shadow-2xl">
-        <div class="w-24 h-20 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-3xl mx-auto flex items-center justify-center text-4xl font-black mb-6 shadow-xl">{{ (user.first_name or 'U')[0] }}</div>
-        <h2 class="text-2xl font-black uppercase tracking-tighter">{{ user.first_name }} {{ user.last_name }}</h2>
-        <p class="text-xs text-gray-500 mb-8 tracking-widest">📱 {{ user.mobile }}</p>
-        <div class="grid grid-cols-2 gap-4 mb-10">
-            <div class="bg-black/40 p-5 rounded-3xl"><p class="text-[9px] text-gray-500 uppercase font-bold">Balance</p><p class="text-xl font-black text-yellow-400">{{ user.get('balance', 0) }} 🪙</p></div>
-            <div class="bg-black/40 p-5 rounded-3xl"><p class="text-[9px] text-gray-500 uppercase font-bold">Premium</p><p class="text-[11px] font-black {{ 'text-green-400' if user.is_premium else 'text-red-400' }}">{{ 'ACTIVE' if user.is_premium else 'INACTIVE' }}</p></div>
+# --- ওয়েবসাইট সেকশন ---
+
+# কমন সিএসএস এবং ডিজাইন (Tailwind CSS)
+def get_layout(content, user=None):
+    return f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Movie Stream</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <style>
+            body {{ background-color: #0f172a; color: white; }}
+            .nav-link {{ padding: 10px; color: #cbd5e1; }}
+            .card {{ background: #1e293b; border-radius: 10px; overflow: hidden; }}
+        </style>
+    </head>
+    <body>
+        <nav class="bg-gray-900 p-4 flex justify-around border-b border-gray-700">
+            <a href="/home" class="nav-link">🏠 Home</a>
+            <a href="/tasks" class="nav-link">💰 Tasks</a>
+            <a href="/premium" class="nav-link">💎 Premium</a>
+            <a href="/profile" class="nav-link">👤 Profile</a>
+        </nav>
+        <div class="container mx-auto p-4 mb-20">
+            {content}
         </div>
-        <form action="/api/update-profile" method="POST" class="space-y-4 text-left">
-            <input type="hidden" name="mobile" value="{{ user.mobile }}">
-            <input type="text" name="first_name" value="{{ user.first_name }}" placeholder="First Name">
-            <input type="text" name="last_name" value="{{ user.last_name }}" placeholder="Last Name">
-            <input type="password" name="password" placeholder="Change Password">
-            <button class="btn-blue mt-4">UPDATE INFO</button>
+    </body>
+    </html>
+    """
+
+# --- রুটস ---
+
+@app.get("/")
+async def root(request: Request):
+    if "user" in request.session: return RedirectResponse("/home")
+    return HTMLResponse(content=f"""
+    <div class="max-w-md mx-auto mt-20 bg-gray-800 p-8 rounded-lg">
+        <h2 class="text-2xl font-bold mb-4 text-center">Login</h2>
+        <form action="/login" method="post" class="space-y-4">
+            <input name="mobile" placeholder="Mobile Number" class="w-full p-2 rounded bg-gray-700 border-none text-white" required>
+            <input name="password" type="password" placeholder="Password" class="w-full p-2 rounded bg-gray-700 border-none text-white" required>
+            <button class="w-full bg-blue-600 p-2 rounded font-bold">Login</button>
         </form>
-        <a href="/logout" class="block mt-10 text-red-500 text-[10px] font-black uppercase">Logout Account</a>
-    </div>""" + USER_FOOT, act='profile', config=c, user=u, ad_config=ad_c)
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        mob, pw = str(request.form.get('mobile')), str(request.form.get('password'))
-        u = users_col.find_one({"mobile": mob, "password": pw})
-        if u:
-            r = make_response(redirect('/'))
-            r.set_cookie('mobile', mob, max_age=30*24*60*60); return r
-        return "ভুল মোবাইল/পাসওয়ার্ড! <a href='/login'>Try Again</a>"
-    return render_template_string("""<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">"""+CSS+"""</head><body class="flex items-center justify-center min-h-screen p-6"><div class="glass p-10 rounded-[45px] w-full max-w-sm text-center shadow-2xl"><h1 class="text-3xl font-black text-blue-400 mb-8 uppercase">User Login</h1><form method="POST" class="space-y-4"><input type="text" name="mobile" placeholder="Mobile" required><input type="password" name="password" placeholder="Password" required><button class="btn-blue">LOGIN</button></form><p class="mt-8 text-xs">No account? <a href="/register" class="text-blue-400 font-bold">Register</a></p></div></body></html>""")
-
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        mob = str(request.form.get('mobile'))
-        if users_col.find_one({"mobile": mob}): return "ইতিমধ্যে নিবন্ধিত!"
-        users_col.insert_one({"first_name":request.form.get('first_name'),"last_name":request.form.get('last_name'),"mobile":mob,"telegram_id":str(request.form.get('telegram_id')),"password":str(request.form.get('password')),"balance":0,"is_premium":False,"premium_expiry": datetime.now()})
-        return redirect('/login')
-    return render_template_string("""<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">"""+CSS+"""</head><body class="flex items-center justify-center min-h-screen p-6"><div class="glass p-10 rounded-[45px] w-full max-w-sm text-center shadow-2xl"><h1 class="text-3xl font-black text-green-500 mb-8 uppercase">Register</h1><form method="POST" class="space-y-4"><div class="flex gap-2"><input type="text" name="first_name" placeholder="First Name" required><input type="text" name="last_name" placeholder="Last Name" required></div><input type="text" name="mobile" placeholder="Mobile" required><input type="number" name="telegram_id" placeholder="Telegram ID" required><input type="password" name="password" placeholder="Set Password" required><button class="btn-blue bg-green-600">CREATE ACCOUNT</button></form></div></body></html>""")
-
-@app.route('/tasks')
-def tasks():
-    u = get_user()
-    if not u: return redirect('/login')
-    c = settings_col.find_one({"type":"site_config"})
-    ad_c = ep_ads_col.find_one({"type":"ep_ad_config"})
-    d_tasks = list(tasks_col.find())
-    for t in d_tasks: t['_id'] = str(t['_id'])
-    m_tasks = list(monetag_tasks_col.find())
-    for t in m_tasks: t['_id'] = str(t['_id'])
-    return render_template_string(USER_HEAD + """
-    <h2 class="text-xl font-bold mb-6 text-green-400 uppercase">💰 Daily Income Tasks</h2>
-    <div class="space-y-4">
-        {% for t in d_tasks %}
-        <div class="glass p-5 rounded-3xl flex justify-between items-center">
-            <div><p class="text-sm font-bold">Direct Task {{ loop.index }}</p><p class="text-[10px] text-yellow-400">+{{ t.coins }} Coins (Limit: {{ t.limit }})</p></div>
-            <button onclick="window.open('{{ t.link }}', '_blank'); completeTask('{{ t._id }}', 'direct')" class="bg-green-600 px-6 py-2 rounded-xl text-[10px] font-black uppercase">GO</button>
-        </div>
-        {% endfor %}
-        {% for m in m_tasks %}
-        <div class="glass p-5 rounded-3xl flex justify-between items-center">
-            <div><p class="text-sm font-bold">Watch Ad Task {{ loop.index }}</p><p class="text-[10px] text-yellow-400">+{{ m.coins }} Coins (Limit: {{ m.limit }})</p></div>
-            <button onclick="completeTask('{{ m._id }}', 'monetag')" class="bg-blue-600 px-6 py-2 rounded-xl text-[10px] font-black uppercase">WATCH</button>
-        </div>
-        {% endfor %}
+        <p class="mt-4 text-center">Don't have an account? <a href="/register" class="text-blue-400">Register</a></p>
     </div>
-    <script>
-    async function completeTask(id, type) {
-        const r = await fetch('/api/tasks/complete', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mobile:'{{ user.mobile }}', task_id:id, type:type})});
-        const d = await r.json();
-        if(d.status === 'success') { alert("Success! Coins Added."); location.reload(); }
-        else { alert("Daily Limit Reached!"); }
-    }
-    </script>""" + USER_FOOT, act='task', config=c, user=u, d_tasks=d_tasks, m_tasks=m_tasks, ad_config=ad_c)
+    """, status_code=200)
 
-@app.route('/premium')
-def premium_page():
-    u = get_user()
-    if not u: return redirect('/login')
-    c = settings_col.find_one({"type":"site_config"})
-    ad_c = ep_ads_col.find_one({"type":"ep_ad_config"})
-    plans = list(plans_col.find())
-    for p in plans: p['_id'] = str(p['_id'])
-    return render_template_string(USER_HEAD + """
-    <h2 class="text-xl font-bold mb-6 text-yellow-400 uppercase">👑 Premium Member Plans</h2>
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {% for p in plans %}
-        <div class="glass p-8 rounded-[40px] text-center border-t-4 border-yellow-500 shadow-2xl relative overflow-hidden">
-            <h3 class="text-2xl font-black mb-2">{{ p.days }} DAYS</h3>
-            <p class="text-3xl font-black text-yellow-400 mb-8">{{ p.coins }} Coins</p>
-            <button onclick="buyPremium('{{ p._id }}')" class="btn-blue bg-yellow-600 shadow-lg text-[10px]">Buy Member</button>
-        </div>
-        {% endfor %}
-    </div>
-    <script>
-    async function buyPremium(id) {
-        const r = await fetch('/api/premium/buy', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mobile:'{{ user.mobile }}', plan_id:id})});
-        const d = await r.json();
-        alert(d.message); if(d.status==='success') location.reload();
-    }
-    </script>""" + USER_FOOT, act='premium', config=c, user=u, plans=plans, ad_config=ad_c)
-
-# ==========================================
-# ৫. মেগা অ্যাডমিন ড্যাশবোর্ড (সব মেনুসহ)
-# ==========================================
-
-ADMIN_HEAD = """
-<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<script src="https://cdn.tailwindcss.com"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-""" + CSS + """</head><body class="flex flex-col md:flex-row min-h-screen">
-<div class="w-full md:w-64 glass p-6 space-y-6 flex-shrink-0">
-    <h1 class="text-xl font-black text-blue-400 text-center uppercase tracking-widest">Master Admin</h1>
-    <nav class="flex flex-col gap-2 text-[11px] font-bold">
-        <a href="/admin/dashboard" class="p-3 bg-white/5 rounded-xl hover:bg-blue-600/20">DASHBOARD</a>
-        <a href="/admin/logout" class="p-3 text-red-500 mt-12 bg-red-500/10 rounded-xl">LOGOUT ADMIN</a>
-    </nav>
-</div>
-<div class="flex-1 p-6 space-y-12 overflow-y-auto">"""
-
-@app.route('/admin', methods=['GET', 'POST'])
-def admin_login():
-    if request.method == 'POST':
-        if request.form.get('password') == ADMIN_PASSWORD: session['admin']=True; return redirect('/admin/dashboard')
-    return render_template_string("""<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">"""+CSS+"""</head><body class="flex items-center justify-center min-h-screen p-6"><form method="POST" class="glass p-12 rounded-[45px] w-full max-w-sm text-center shadow-2xl"><h1 class="text-2xl font-black text-red-500 mb-8 uppercase">Admin Portal</h1><input type="password" name="password" placeholder="Admin Password" class="mb-4" required><button class="btn-blue bg-red-600">ENTER SYSTEM</button></form></body></html>""")
-
-@app.route('/admin/dashboard')
-def admin_dashboard():
-    if not session.get('admin'): return redirect('/admin')
-    c = settings_col.find_one({"type": "site_config"})
-    ep_c = ep_ads_col.find_one({"type": "ep_ad_config"})
-    m = list(movies_col.find().sort('_id', -1))
-    for x in m: x['_id'] = str(x['_id'])
-    m_tasks = list(monetag_tasks_col.find())
-    for x in m_tasks: x['_id'] = str(x['_id'])
-    return render_template_string(ADMIN_HEAD + """
-    <div class="grid grid-cols-2 lg:grid-cols-2 gap-6">
-        <div class="glass p-6 rounded-[30px] text-center"><p class="text-3xl font-black text-blue-400">{{ u_count }}</p><p class="text-xs">Users</p></div>
-        <div class="glass p-6 rounded-[30px] text-center"><p class="text-3xl font-black text-green-400">{{ m_count }}</p><p class="text-xs">Movies</p></div>
-    </div>
-    <section class="glass p-10 rounded-[40px] border border-blue-500/10">
-        <h2 class="text-xl font-black mb-8 text-blue-400 uppercase">Movie Management</h2>
-        <form action="/admin/movie/add-range" method="POST" class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-10">
-            <input type="text" name="title" placeholder="Movie Name" class="md:col-span-2" required>
-            <input type="number" name="start_id" placeholder="Start Msg ID" required>
-            <input type="number" name="end_id" placeholder="End Msg ID" required>
-            <button class="btn-blue bg-indigo-600 md:col-span-4 uppercase">UPLOAD RANGE</button>
+@app.get("/register")
+async def register_page():
+    return HTMLResponse(content=f"""
+    <div class="max-w-md mx-auto mt-20 bg-gray-800 p-8 rounded-lg">
+        <h2 class="text-2xl font-bold mb-4 text-center">Create Account</h2>
+        <form action="/register" method="post" class="space-y-4">
+            <input name="fname" placeholder="First Name" class="w-full p-2 rounded bg-gray-700 text-white" required>
+            <input name="lname" placeholder="Last Name" class="w-full p-2 rounded bg-gray-700 text-white" required>
+            <input name="mobile" placeholder="Mobile Number" class="w-full p-2 rounded bg-gray-700 text-white" required>
+            <input name="password" type="password" placeholder="Password" class="w-full p-2 rounded bg-gray-700 text-white" required>
+            <button class="w-full bg-green-600 p-2 rounded font-bold">Register</button>
         </form>
-        <div class="overflow-x-auto"><table class="w-full text-left text-[11px]">
-            <tbody>{% for x in movies %}<tr class="border-b border-white/5"><td class="p-4 font-bold">{{ x.title }}</td><td class="p-4 text-right"><a href="/admin/movie/delete/{{ x._id }}" class="text-red-500">DELETE</a></td></tr>{% endfor %}</tbody>
-        </table></div>
-    </section>
-    <section class="glass p-10 rounded-[40px] border border-red-500/10">
-        <h2 class="text-xl font-black mb-8 text-red-500 uppercase">Ad Lock System</h2>
-        <form action="/admin/update-ep-ads" method="POST" class="space-y-4">
-            <input type="text" name="direct_link" value="{{ ep_c.direct_link }}" placeholder="Direct Link">
-            <textarea name="monetag_script" placeholder="Paste Full Monetag SDK/Script Here" class="h-32">{{ ep_c.monetag_script }}</textarea>
-            <div class="grid grid-cols-2 gap-4">
-                <input type="number" name="unlock_minutes" value="{{ ep_c.unlock_minutes }}" placeholder="Unlock Minutes">
-                <select name="active_type">
-                    <option value="direct" {{ 'selected' if ep_c.active_type=='direct' }}>USE DIRECT LINK</option>
-                    <option value="monetag" {{ 'selected' if ep_c.active_type=='monetag' }}>USE MONETAG SCRIPT</option>
-                    <option value="off" {{ 'selected' if ep_c.active_type=='off' }}>OFF</option>
-                </select>
+    </div>
+    """)
+
+@app.post("/register")
+async def register(fname:str=Form(...), lname:str=Form(...), mobile:str=Form(...), password:str=Form(...)):
+    user = await db.users.find_one({"mobile": mobile})
+    if user: return "Mobile already exists!"
+    await db.users.insert_one({
+        "name": f"{fname} {lname}", "mobile": mobile, "password": password,
+        "coins": 0, "premium_until": None, "role": "user"
+    })
+    return RedirectResponse("/", status_code=303)
+
+@app.post("/login")
+async def login(request: Request, mobile:str=Form(...), password:str=Form(...)):
+    user = await db.users.find_one({"mobile": mobile, "password": password})
+    if user:
+        request.session["user"] = mobile
+        return RedirectResponse("/home", status_code=303)
+    return "Invalid Credentials"
+
+@app.get("/home")
+async def home(request: Request, page: int = 1):
+    if "user" not in request.session: return RedirectResponse("/")
+    limit = 30
+    skip = (page - 1) * limit
+    movies_cursor = db.movies.find().sort("created_at", -1).skip(skip).limit(limit)
+    movies = await movies_cursor.to_list(length=limit)
+    
+    movie_cards = ""
+    for m in movies:
+        movie_cards += f"""
+        <div class="card shadow-lg">
+            <img src="{m['poster']}" class="w-full h-64 object-cover">
+            <div class="p-2">
+                <h3 class="font-bold truncate">{m['title']}</h3>
+                <a href="/movie/{m['_id']}" class="block mt-2 bg-blue-500 text-center py-1 rounded">Watch Now</a>
             </div>
-            <button class="btn-blue bg-red-600 uppercase font-black">UPDATE LOCK SYSTEM</button>
+        </div>
+        """
+    
+    pagination = f"""
+    <div class="flex justify-center space-x-4 mt-8">
+        <a href="/home?page={max(1, page-1)}" class="bg-gray-700 px-4 py-2 rounded">Prev</a>
+        <span class="py-2">Page {page}</span>
+        <a href="/home?page={page+1}" class="bg-gray-700 px-4 py-2 rounded">Next</a>
+    </div>
+    """
+    return HTMLResponse(get_layout(f"<div class='grid grid-cols-2 md:grid-cols-5 gap-4'>{movie_cards}</div>{pagination}"))
+
+@app.get("/movie/{movie_id}")
+async def movie_detail(request: Request, movie_id: str):
+    if "user" not in request.session: return RedirectResponse("/")
+    movie = await db.movies.find_one({"_id": ObjectId(movie_id)})
+    user = await db.users.find_one({"mobile": request.session["user"]})
+    settings = await db.settings.find_one({"type": "ads"}) or {"ads_id": "#", "zone_id": "#"}
+    
+    is_premium = user.get("premium_until") and user["premium_until"] > datetime.now()
+    ad_url = f"https://{settings['ads_id']}.com/{settings['zone_id']}"
+    
+    ep_buttons = ""
+    for i, ep in enumerate(movie['episodes']):
+        link = f"/play/{movie_id}/{i}" if is_premium else ad_url
+        target = "" if is_premium else 'target="_blank"'
+        ep_buttons += f'<a href="{link}" {target} class="bg-gray-700 p-4 rounded-lg flex justify-between items-center hover:bg-gray-600 transition"><span>{ep["name"]}</span> <span>▶️</span></a>'
+
+    content = f"""
+    <div class="max-w-2xl mx-auto">
+        <img src="{movie['poster']}" class="w-full rounded-xl shadow-2xl mb-6">
+        <h1 class="text-3xl font-bold mb-4">{movie['title']}</h1>
+        <div class="space-y-2">
+            <h2 class="text-xl font-semibold mb-2">Episodes:</h2>
+            <div class="grid grid-cols-1 gap-3">{ep_buttons}</div>
+        </div>
+    </div>
+    """
+    return HTMLResponse(get_layout(content))
+
+# --- টাস্ক সিস্টেম ---
+@app.get("/tasks")
+async def tasks_page(request: Request):
+    if "user" not in request.session: return RedirectResponse("/")
+    tasks = await db.tasks.find().to_list(length=100)
+    user = await db.users.find_one({"mobile": request.session["user"]})
+    
+    task_html = ""
+    for t in tasks:
+        btn_action = f"onclick=\"location.href='/complete-task/{t['_id']}'\""
+        if t['type'] == 'monetag':
+            btn_action = f"onclick=\"showMonetag('{t['script']}', '{t['_id']}')\""
+            
+        task_html += f"""
+        <div class="bg-gray-800 p-4 rounded-lg flex justify-between items-center mb-3">
+            <div>
+                <p class="font-bold">{t['name']}</p>
+                <p class="text-yellow-400 text-sm">{t['coins']} Coins</p>
+            </div>
+            <button {btn_action} class="bg-green-600 px-4 py-2 rounded">Complete</button>
+        </div>
+        """
+    
+    script = """
+    <script>
+    function showMonetag(scriptUrl, tid) {
+        window.open(scriptUrl, '_blank');
+        setTimeout(() => { location.href = '/complete-task/' + tid; }, 5000);
+    }
+    </script>
+    """
+    return HTMLResponse(get_layout(f"<h2 class='text-2xl mb-6'>Available Tasks</h2>{task_html}{script}"))
+
+@app.get("/complete-task/{tid}")
+async def complete_task(request: Request, tid: str):
+    user_mobile = request.session.get("user")
+    task = await db.tasks.find_one({"_id": ObjectId(tid)})
+    if task:
+        await db.users.update_one({"mobile": user_mobile}, {"$inc": {"coins": int(task['coins'])}})
+    return RedirectResponse("/tasks")
+
+# --- প্রোফাইল এবং প্রিমিয়াম ---
+@app.get("/profile")
+async def profile(request: Request):
+    user = await db.users.find_one({"mobile": request.session["user"]})
+    return HTMLResponse(get_layout(f"""
+    <div class="max-w-md mx-auto bg-gray-800 p-6 rounded-lg">
+        <h2 class="text-2xl font-bold mb-6 text-center">My Profile</h2>
+        <form action="/update-profile" method="post" class="space-y-4">
+            <div><label>Full Name</label><input name="name" value="{user['name']}" class="w-full p-2 bg-gray-700 rounded"></div>
+            <div><label>Mobile</label><input value="{user['mobile']}" class="w-full p-2 bg-gray-900 rounded" disabled></div>
+            <div><label>New Password</label><input name="password" type="password" placeholder="Leave blank to keep same" class="w-full p-2 bg-gray-700 rounded"></div>
+            <div class="bg-blue-900 p-3 rounded">Current Balance: {user['coins']} Coins</div>
+            <button class="w-full bg-orange-600 py-2 rounded">Update Profile</button>
         </form>
-    </section>
-    <section class="glass p-10 rounded-[40px] border border-green-500/10">
-        <h2 class="text-xl font-black mb-8 text-green-500 uppercase">Add Monetag Task</h2>
-        <form action="/admin/monetag/add" method="POST" class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <input type="text" name="name" placeholder="Task Name" class="md:col-span-2" required>
-            <input type="number" name="coins" placeholder="Coins" required>
-            <input type="number" name="limit" placeholder="Daily Limit" required>
-            <button class="btn-blue bg-yellow-600 md:col-span-4 uppercase">ADD WATCH AD TASK</button>
+    </div>
+    """))
+
+@app.get("/premium")
+async def premium_page(request: Request):
+    user = await db.users.find_one({"mobile": request.session["user"]})
+    packages = await db.packages.find().to_list(length=20)
+    
+    pkg_html = ""
+    for p in packages:
+        pkg_html += f"""
+        <div class="bg-gray-800 p-6 rounded-xl border border-yellow-500 text-center">
+            <h3 class="text-xl font-bold">{p['days']} Days</h3>
+            <p class="text-3xl my-4">{p['price']} <span class="text-sm text-yellow-400">Coins</span></p>
+            <a href="/buy-pkg/{p['_id']}" class="block bg-yellow-600 py-2 rounded-lg font-bold">Buy Now</a>
+        </div>
+        """
+    return HTMLResponse(get_layout(f"<h2 class='text-2xl mb-6'>Premium Packages</h2><div class='grid grid-cols-1 md:grid-cols-3 gap-6'>{pkg_html}</div>"))
+
+@app.get("/buy-pkg/{pid}")
+async def buy_pkg(request: Request, pid: str):
+    user = await db.users.find_one({"mobile": request.session["user"]})
+    pkg = await db.packages.find_one({"_id": ObjectId(pid)})
+    
+    if user['coins'] >= int(pkg['price']):
+        expiry = datetime.now() + timedelta(days=int(pkg['days']))
+        await db.users.update_one({"mobile": user['mobile']}, {
+            "$inc": {"coins": -int(pkg['price'])},
+            "$set": {"premium_until": expiry}
+        })
+        return RedirectResponse("/profile")
+    return "Insufficient Coins!"
+
+# --- এডমিন প্যানেল ---
+@app.get("/admin-login")
+async def admin_login_page():
+    return HTMLResponse(content="""
+    <body class="bg-gray-900 text-white flex items-center justify-center h-screen">
+        <form action="/admin-login" method="post" class="bg-gray-800 p-8 rounded shadow-lg">
+            <h2 class="text-xl mb-4">Admin Access</h2>
+            <input name="pass" type="password" placeholder="Admin Password" class="p-2 rounded bg-gray-700 block w-full mb-4">
+            <button class="w-full bg-red-600 py-2 rounded">Login</button>
         </form>
-        <div class="space-y-2">{% for mt in m_tasks %}<div class="bg-black/30 p-3 rounded-xl flex justify-between text-xs"><span>{{ mt.name }} (+{{ mt.coins }} Coins)</span><a href="/admin/monetag/delete/{{ mt._id }}" class="text-red-500">DELETE</a></div>{% endfor %}</div>
-    </section>
-    </div></body></html>""", config=c, ep_c=ep_c, movies=m, u_count=users_col.count_documents({}), m_count=len(m), m_tasks=m_tasks)
+    </body>""")
 
-# ==========================================
-# ৬. টেলিগ্রাম বট ও লজিক (Correct File Forwarding)
-# ==========================================
+@app.post("/admin-login")
+async def admin_login(request: Request, password: str = Form(...)):
+    if password == ADMIN_PASSWORD:
+        request.session["admin"] = True
+        return RedirectResponse("/admin/dashboard", status_code=303)
+    return "Wrong Admin Password"
 
-@bot.message_handler(commands=['start'])
-def bot_start(message):
-    bot.reply_to(message, f"👋 স্বাগতম!\nআপনার টেলিগ্রাম আইডি: `{message.from_user.id}`")
-
-@bot.message_handler(commands=['movie'])
-def bot_movie_start(message):
-    if message.from_user.id not in ADMIN_IDS: return bot.reply_to(message, "❌ No Permission")
-    msg = bot.send_message(message.chat.id, "🎬 মুভির নাম লিখুন:")
-    bot.register_next_step_handler(msg, bot_get_cat)
-
-def bot_get_cat(m):
-    title = m.text
-    msg = bot.send_message(m.chat.id, "📂 মুভির ক্যাটাগরি:")
-    bot.register_next_step_handler(msg, lambda m: bot_get_poster(m, title))
-
-def bot_get_poster(m, title):
-    cat = m.text
-    msg = bot.send_message(m.chat.id, "🖼 মুভির পোস্টার ডিরেক্ট লিংক (Image Link) দিন:")
-    bot.register_next_step_handler(msg, lambda m: bot_get_files(m, title, cat))
-
-def bot_get_files(m, title, cat):
-    poster = m.text
-    msg = bot.send_message(m.chat.id, "📥 ভিডিও/ডকুমেন্ট পাঠান। শেষ হলে /done লিখুন।")
-    bot.register_next_step_handler(msg, lambda m: bot_collect_files(m, title, cat, poster, []))
-
-def bot_collect_files(m, title, cat, poster, eps):
-    if m.text == "/done":
-        movies_col.insert_one({"title": title, "category": cat, "poster": poster, "episodes": eps, "date": datetime.now()})
-        return bot.send_message(m.chat.id, f"✅ মুভি সফল: {title}")
-    if m.content_type in ['video', 'document']:
-        sent = bot.forward_message(FILE_CHANNEL_ID, m.chat.id, m.message_id)
-        cid = str(FILE_CHANNEL_ID).replace("-100", "")
-        ep_name = f"{title} - Episode {len(eps)+1}"
-        eps.append({"name": ep_name, "link": f"https://t.me/c/{cid}/{sent.message_id}"})
-        bot.send_message(m.chat.id, f"📥 {ep_name} যোগ হয়েছে। আরও থাকলে দিন নয়তো /done লিখুন।")
-    bot.register_next_step_handler(m, lambda m: bot_collect_files(m, title, cat, poster, eps))
-
-# ==========================================
-# ৭. পাসওয়ার্ড রিসেট (OTP System)
-# ==========================================
-
-@app.route('/forgot', methods=['GET', 'POST'])
-def forgot_password():
-    if request.method == 'POST':
-        mob, tid = str(request.form.get('mobile')), int(request.form.get('telegram_id'))
-        u = users_col.find_one({"mobile": mob, "telegram_id": str(tid)})
-        if u:
-            otp = ''.join(random.choices(string.digits, k=6))
-            otp_col.update_one({"mobile": mob}, {"$set": {"otp": otp}}, upsert=True)
-            try: bot.send_message(tid, f"🔐 পাসওয়ার্ড ওটিপি: {otp}")
-            except: return "বট স্টার্ট করা নেই!"
-            return "ওটিপি বটের প্রোফাইলে পাঠানো হয়েছে!"
-        return "তথ্য মেলেনি!"
-    return "Forgot password form goes here..."
-
-@app.route('/reset', methods=['POST'])
-def reset_password_final():
-    mob, otp, pw = str(request.form.get('mobile')), str(request.form.get('otp')), str(request.form.get('password'))
-    res = otp_col.find_one({"mobile": mob, "otp": otp})
-    if res:
-        users_col.update_one({"mobile": mob}, {"$set": {"password": pw}})
-        otp_col.delete_one({"mobile": mob}); return redirect('/login')
-    return "ভুল ওটিপি!"
-
-# ==========================================
-# ৮. অ্যাডমিন ব্যাকএন্ড লজিক ও API (ডিলিট ফিক্সড)
-# ==========================================
-
-@app.route('/admin/movie/add-range', methods=['POST'])
-def admin_add_movie_range():
-    if not session.get('admin'): return redirect('/admin')
-    title, start, end = request.form.get('title'), int(request.form.get('start_id')), int(request.form.get('end_id'))
-    cid = str(FILE_CHANNEL_ID).replace("-100", "")
-    eps = [{"name": f"{title} - Episode {idx+1}", "link": f"https://t.me/c/{cid}/{i}"} for idx, i in enumerate(range(start, end + 1))]
-    movies_col.insert_one({"title": title, "category": "Action", "poster": "https://via.placeholder.com/300", "episodes": eps, "date": datetime.now()})
-    return redirect('/admin/dashboard')
-
-@app.route('/admin/movie/delete/<id>')
-def admin_del_movie(id):
-    if not session.get('admin'): return redirect('/admin')
-    try: movies_col.delete_one({"_id": ObjectId(id)})
-    except: pass
-    return redirect('/admin/dashboard')
-
-@app.route('/admin/monetag/add', methods=['POST'])
-def admin_add_monetag_task():
-    if not session.get('admin'): return redirect('/admin')
-    monetag_tasks_col.insert_one(request.form.to_dict()); return redirect('/admin/dashboard')
-
-@app.route('/admin/monetag/delete/<id>')
-def admin_del_monetag_task(id):
-    if not session.get('admin'): return redirect('/admin')
-    try: monetag_tasks_col.delete_one({"_id": ObjectId(id)})
-    except: pass
-    return redirect('/admin/dashboard')
-
-@app.route('/admin/update-ep-ads', methods=['POST'])
-def admin_save_ep_ads():
-    if not session.get('admin'): return redirect('/admin')
-    ep_ads_col.update_one({"type":"ep_ad_config"}, {"$set": {"direct_link":request.form.get('direct_link'),"monetag_script":request.form.get('monetag_script'),"unlock_minutes":int(request.form.get('unlock_minutes')),"active_type":request.form.get('active_type')}})
-    return redirect('/admin/dashboard')
-
-# ==========================================
-# ৯. ইউজার সাপোর্ট এপিআই (লিমিট ফিক্সড)
-# ==========================================
-
-@app.route('/api/tasks/complete', methods=['POST'])
-def api_task_done():
-    d = request.json
-    today = datetime.now().strftime("%Y-%m-%d")
-    col = monetag_tasks_col if d['type'] == 'monetag' else tasks_col
-    t = col.find_one({"_id": ObjectId(d['task_id'])})
-    if not t: return jsonify({"status": "error"})
+@app.get("/admin/dashboard")
+async def admin_dashboard(request: Request):
+    if not request.session.get("admin"): return RedirectResponse("/admin-login")
     
-    limit = int(t.get('limit', 1))
-    h = user_tasks_history.find_one({"mobile": d['mobile'], "task_id": d['task_id'], "date": today})
-    if h and h.get('count', 0) >= limit: return jsonify({"status": "limit"})
-    
-    users_col.update_one({"mobile": str(d['mobile'])}, {"$inc": {"balance": int(t['coins'])}})
-    user_tasks_history.update_one({"mobile": d['mobile'], "task_id": d['task_id'], "date": today}, {"$inc": {"count": 1}}, upsert=True)
-    return jsonify({"status": "success"})
+    # এডমিন প্যানেলের ডিজাইন ও মেনু
+    return HTMLResponse(f"""
+    {get_layout("<h1 class='text-3xl mb-8'>Admin Dashboard</h1>")}
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 p-4">
+        <div class="bg-gray-800 p-6 rounded">
+            <h3 class="text-xl mb-4">Ads Settings</h3>
+            <form action="/admin/save-ads" method="post">
+                <input name="ads_id" placeholder="Monetag Ad ID" class="w-full p-2 mb-2 bg-gray-700">
+                <input name="zone_id" placeholder="Zone ID" class="w-full p-2 mb-2 bg-gray-700">
+                <button class="bg-blue-600 px-4 py-2 rounded">Save Changes</button>
+            </form>
+        </div>
+        <div class="bg-gray-800 p-6 rounded">
+            <h3 class="text-xl mb-4">Add Task</h3>
+            <form action="/admin/add-task" method="post">
+                <input name="name" placeholder="Task Name" class="w-full p-2 mb-2 bg-gray-700">
+                <select name="type" class="w-full p-2 mb-2 bg-gray-700">
+                    <option value="direct">Direct Link</option>
+                    <option value="monetag">Monetag Task</option>
+                </select>
+                <input name="link" placeholder="Link or Script" class="w-full p-2 mb-2 bg-gray-700">
+                <input name="coins" placeholder="Coin Reward" class="w-full p-2 mb-2 bg-gray-700">
+                <button class="bg-green-600 px-4 py-2 rounded">Add Task</button>
+            </form>
+        </div>
+        <div class="bg-gray-800 p-6 rounded">
+            <h3 class="text-xl mb-4">Premium Packages</h3>
+            <form action="/admin/add-pkg" method="post">
+                <input name="days" placeholder="Validity (Days)" class="w-full p-2 mb-2 bg-gray-700">
+                <input name="price" placeholder="Price (Coins)" class="w-full p-2 mb-2 bg-gray-700">
+                <button class="bg-yellow-600 px-4 py-2 rounded text-black">Add Package</button>
+            </form>
+        </div>
+    </div>
+    """)
 
-@app.route('/api/premium/buy', methods=['POST'])
-def api_buy_prem():
-    d = request.json
-    p = plans_col.find_one({"_id": ObjectId(d['plan_id'])})
-    u = users_col.find_one({"mobile": d['mobile']})
-    if not u or u.get('balance', 0) < int(p.get('coins', 0)): return jsonify({"status": "low", "message": " Low coins!"})
-    exp = (u.get('premium_expiry') if u.get('is_premium') and isinstance(u.get('premium_expiry'), datetime) and u['premium_expiry'] > datetime.now() else datetime.now()) + timedelta(days=int(p['days']))
-    users_col.update_one({"mobile": d['mobile']}, {"$inc": {"balance": -int(p['coins'])}, "$set": {"is_premium": True, "premium_expiry": exp}})
-    return jsonify({"status": "success", "message": "Premium Activated!"})
+# এডমিন অ্যাকশন রুটস
+@app.post("/admin/save-ads")
+async def save_ads(ads_id: str = Form(...), zone_id: str = Form(...)):
+    await db.settings.update_one({"type": "ads"}, {"$set": {"ads_id": ads_id, "zone_id": zone_id}}, upsert=True)
+    return RedirectResponse("/admin/dashboard", status_code=303)
 
-@app.route('/api/check-access', methods=['POST'])
-def api_check_ep():
-    u = users_col.find_one({"mobile": str(request.json.get('mobile'))})
-    if not u: return jsonify({"status": "locked"})
-    if u.get('is_premium'): return jsonify({"status": "unlocked"})
-    un = ep_unlock_col.find_one({"mobile": str(u['mobile'])})
-    if un and datetime.now() < un.get('expiry', datetime.now()): return jsonify({"status": "unlocked"})
-    
-    ad_conf = ep_ads_col.find_one({"type":"ep_ad_config"})
-    ad_conf['_id'] = str(ad_conf['_id']) # JSON serialization fix
-    return jsonify({"status": "locked", "ad_config": ad_conf})
+@app.post("/admin/add-task")
+async def add_task(name:str=Form(...), type:str=Form(...), link:str=Form(...), coins:str=Form(...)):
+    await db.tasks.insert_one({"name": name, "type": type, "script": link, "coins": coins})
+    return RedirectResponse("/admin/dashboard", status_code=303)
 
-@app.route('/api/unlock', methods=['POST'])
-def api_unlock_final():
-    mob, c = str(request.json.get('mobile')), ep_ads_col.find_one({"type":"ep_ad_config"})
-    ep_unlock_col.update_one({"mobile": mob}, {"$set": {"expiry": datetime.now() + timedelta(minutes=int(c.get('unlock_minutes', 30)))}}, upsert=True)
-    return jsonify({"status": "success"})
+@app.post("/admin/add-pkg")
+async def add_pkg(days:str=Form(...), price:str=Form(...)):
+    await db.packages.insert_one({"days": days, "price": price})
+    return RedirectResponse("/admin/dashboard", status_code=303)
 
-@app.route('/api/update-profile', methods=['POST'])
-def api_up_profile():
-    users_col.update_one({"mobile": str(request.form.get('mobile'))}, {"$set": {"first_name": request.form.get('first_name'), "last_name": request.form.get('last_name'), "password": request.form.get('password')}})
-    return redirect('/profile')
-
-@app.route('/logout')
-def logout():
-    r = make_response(redirect('/login'))
-    r.set_cookie('mobile', '', expires=0); return r
-
-@app.route('/admin/logout')
-def ad_logout():
-    session.pop('admin', None); return redirect('/admin')
-
-# ==========================================
-# ১০. রান সিস্টেম ও ওয়েবহুক
-# ==========================================
-@app.route('/api/webhook', methods=['POST'])
-def webhook_handler():
-    if request.headers.get('content-type') == 'application/json':
-        json_str = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_str)
-        bot.process_new_updates([update]); return ''
-    return 'Forbidden', 403
-
+# --- সার্ভার রানার ---
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
+    import threading
+    # বট রান করার জন্য আলাদা থ্রেড
+    def start_bot():
+        tg_bot.run_until_disconnected()
+    
+    threading.Thread(target=start_bot, daemon=True).start()
+    
+    # উভি কর্ন সার্ভার
+    uvicorn.run(app, host="0.0.0.0", port=8000)
