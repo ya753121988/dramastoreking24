@@ -18,6 +18,7 @@ MONGO_URI = "mongodb+srv://drama:drama@cluster0.sa4kvgu.mongodb.net/?appName=Clu
 FILE_CHANNEL_ID = -1003985353441 
 ADMIN_IDS = [7120801813]
 ADMIN_PASSWORD = "admin" # অ্যাডমিন প্যানেল পাসওয়ার্ড
+WEBHOOK_URL = "https://dramastoreking24.vercel.app/api/webhook"
 
 client = MongoClient(MONGO_URI)
 db = client["movie_db"]
@@ -79,10 +80,10 @@ CSS = """
 """
 
 # ==========================================
-# ৩. ইউজার প্যানেল লেআউট (Home, Profile, Tasks, Premium)
+# ৩. ইউজার প্যানেল লেআউট
 # ==========================================
-# FIX: 'content' ব্লকের ডুপ্লিকেট এরর এড়াতে এখান থেকে মেইন ব্লকের নাম মুছে দেওয়া হয়েছে
-USER_LAYOUT = """
+# ডুপ্লিকেট ব্লকের এরর ফিক্স করতে লেআউটকে দুই ভাগে ভাগ করা হয়েছে কিন্তু লজিক হুবহু একই আছে
+USER_LAYOUT_HEAD = """
 <!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="https://cdn.tailwindcss.com"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 """ + CSS + """</head><body class="pb-24">
@@ -91,9 +92,11 @@ USER_LAYOUT = """
     <div class="text-right"><span class="text-blue-400 font-bold block text-sm">{{ config.site_name }}</span></div>
 </header>
 <div class="marquee"><p>📢 {{ config.header_notice }}</p></div>
-<main class="p-4 container mx-auto">"""
+<main class="p-4 container mx-auto">
+"""
 
-USER_FOOTER = """</main>
+USER_LAYOUT_FOOT = """
+</main>
 <nav class="glass bottom-nav">
     <a href="/" class="{{ 'active' if act == 'home' }}"><i class="fas fa-home text-xl"></i><br>🏠 HOME</a>
     <a href="/tasks" class="{{ 'active' if act == 'task' }}"><i class="fas fa-tasks text-xl"></i><br>📅 TASK</a>
@@ -120,7 +123,8 @@ def home():
     page = int(request.args.get('page', 1))
     movies = list(movies_col.find().sort('_id', -1).skip((page-1)*c['movies_per_page']).limit(c['movies_per_page']))
     for m in movies: m['_id'] = str(m['_id'])
-    return render_template_string(USER_LAYOUT + """
+    return render_template_string(USER_LAYOUT_HEAD + """
+    {% block content %}
     <div class="grid-container">
         {% for m in movies %}
         <a href="/movie/{{ m._id }}" class="movie-card glass rounded-[25px] overflow-hidden block">
@@ -134,7 +138,7 @@ def home():
         <span class="text-blue-400 font-bold text-sm">🔢 Page {{ page }}</span>
         <a href="/?page={{ page+1 }}" class="glass px-5 py-2 rounded-xl text-xs">Next ➡️</a>
     </div>
-    """ + USER_FOOTER, act='home', config=c, movies=movies, page=page, user=u)
+    {% endblock %}""" + USER_LAYOUT_FOOT, act='home', config=c, movies=movies, page=page, user=u)
 
 @app.route('/movie/<id>')
 def movie_details(id):
@@ -146,7 +150,8 @@ def movie_details(id):
         return redirect('/')
     if not m: return redirect('/')
     c = settings_col.find_one({"type":"site_config"})
-    return render_template_string(USER_LAYOUT + """
+    return render_template_string(USER_LAYOUT_HEAD + """
+    {% block content %}
     <div class="max-w-4xl mx-auto flex flex-col md:flex-row gap-8">
         <img src="{{ m.poster }}" class="w-full md:w-72 rounded-[35px] shadow-2xl border border-white/10">
         <div class="flex-1">
@@ -176,16 +181,17 @@ def movie_details(id):
         }
         function unlock() { fetch('/api/unlock', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mobile:'{{ user.mobile }}'})}).then(()=>location.reload()); }
     </script>
-    """ + USER_FOOTER, act='home', config=c, m=m, user=u)
+    {% endblock %}""" + USER_LAYOUT_FOOT, act='home', config=c, m=m, user=u)
 
 @app.route('/profile')
 def profile():
     u = get_user()
     if not u: return redirect('/login')
     c = settings_col.find_one({"type":"site_config"})
-    return render_template_string(USER_LAYOUT + """
+    return render_template_string(USER_LAYOUT_HEAD + """
+    {% block content %}
     <div class="max-w-md mx-auto glass p-10 rounded-[40px] text-center shadow-2xl">
-        <div class="w-24 h-20 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-3xl mx-auto flex items-center justify-center text-4xl font-black mb-6 shadow-xl">{{ u.first_name[0] if u.first_name else 'U' }}</div>
+        <div class="w-24 h-20 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-3xl mx-auto flex items-center justify-center text-4xl font-black mb-6 shadow-xl">{{ (u.get('first_name') or 'U')[0] }}</div>
         <h2 class="text-2xl font-black uppercase tracking-tighter">{{ u.first_name }} {{ u.last_name }}</h2>
         <p class="text-xs text-gray-500 mb-8 tracking-widest">📱 {{ u.mobile }}</p>
         <div class="grid grid-cols-2 gap-4 mb-10">
@@ -201,7 +207,7 @@ def profile():
         </form>
         <a href="/logout" class="block mt-10 text-red-500 text-[10px] font-black uppercase tracking-widest hover:opacity-70 transition">Logout Account</a>
     </div>
-    """ + USER_FOOTER, act='profile', config=c, user=u)
+    {% endblock %}""" + USER_FOOTER, act='profile', config=c, user=u)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -260,7 +266,8 @@ def tasks():
     for t in d_tasks: t['_id'] = str(t['_id'])
     m_tasks = list(monetag_tasks_col.find())
     for t in m_tasks: t['_id'] = str(t['_id'])
-    return render_template_string(USER_LAYOUT + """
+    return render_template_string(USER_LAYOUT_HEAD + """
+    {% block content %}
     <h2 class="text-xl font-bold mb-6 text-green-400 uppercase tracking-tighter">💰 Daily Income Tasks</h2>
     <div class="space-y-4">
         {% for t in d_tasks %}
@@ -284,7 +291,7 @@ def tasks():
         else { alert("Limit Reached or Error!"); }
     }
     </script>
-    """ + USER_FOOTER, act='task', config=c, user=u, d_tasks=d_tasks, m_tasks=m_tasks)
+    {% endblock %}""" + USER_FOOTER, act='task', config=c, user=u, d_tasks=d_tasks, m_tasks=m_tasks)
 
 @app.route('/premium')
 def premium_page():
@@ -293,7 +300,8 @@ def premium_page():
     c = settings_col.find_one({"type":"site_config"})
     plans = list(plans_col.find())
     for p in plans: p['_id'] = str(p['_id'])
-    return render_template_string(USER_LAYOUT + """
+    return render_template_string(USER_LAYOUT_HEAD + """
+    {% block content %}
     <h2 class="text-xl font-bold mb-6 text-yellow-400 uppercase tracking-tighter">👑 Premium Member Plans</h2>
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
         {% for p in plans %}
@@ -314,13 +322,13 @@ def premium_page():
         alert(d.message); if(d.status==='success') location.reload();
     }
     </script>
-    """ + USER_FOOTER, act='premium', config=c, user=u, plans=plans)
+    {% endblock %}""" + USER_FOOTER, act='premium', config=c, user=u, plans=plans)
 
 # ==========================================
 # ৫. মেগা অ্যাডমিন ড্যাশবোর্ড (সব মেনুসহ)
 # ==========================================
-# FIX: 'admin_content' ডুপ্লিকেট এরর এড়াতে এখান থেকে ব্লকের নাম মুছে দেওয়া হয়েছে
-ADMIN_LAYOUT = """
+
+ADMIN_HEAD = """
 <!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="https://cdn.tailwindcss.com"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 """ + CSS + """</head><body class="flex flex-col md:flex-row min-h-screen">
@@ -337,9 +345,10 @@ ADMIN_LAYOUT = """
         <a href="/admin/logout" class="p-3 text-red-500 mt-12 bg-red-500/10 rounded-xl"><i class="fas fa-sign-out-alt mr-3"></i> LOGOUT ADMIN</a>
     </nav>
 </div>
-<div class="flex-1 p-6 space-y-12 overflow-y-auto">"""
+<div class="flex-1 p-6 space-y-12 overflow-y-auto">
+"""
 
-ADMIN_FOOTER = """</div></body></html>"""
+ADMIN_FOOT = "</div></body></html>"
 
 @app.route('/admin', methods=['GET', 'POST'])
 def admin_login():
@@ -366,7 +375,8 @@ def admin_dashboard():
     for x in d_tasks: x['_id'] = str(x['_id'])
     m_tasks = list(monetag_tasks_col.find())
     for x in m_tasks: x['_id'] = str(x['_id'])
-    return render_template_string(ADMIN_LAYOUT + """
+    return render_template_string(ADMIN_HEAD + """
+    {% block admin_content %}
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-6">
         <div class="glass p-6 rounded-[30px] text-center border-b-4 border-blue-500 shadow-xl"><p class="text-[9px] text-gray-500 uppercase font-black">Users</p><p class="text-3xl font-black text-blue-400">{{ u_count }}</p></div>
         <div class="glass p-6 rounded-[30px] text-center border-b-4 border-green-500 shadow-xl"><p class="text-[9px] text-gray-500 uppercase font-black">Movies</p><p class="text-3xl font-black text-green-400">{{ m_count }}</p></div>
@@ -458,7 +468,7 @@ def admin_dashboard():
             </div>
         </form>
     </section>
-    """ + ADMIN_FOOTER, config=c, ep_c=ep_c, movies=m, u_count=users_col.count_documents({}), m_count=len(m), plans=plans, d_tasks=d_tasks, m_tasks=m_tasks)
+    {% endblock %}""" + ADMIN_FOOT, config=c, ep_c=ep_c, movies=m, u_count=users_col.count_documents({}), m_count=len(m), plans=plans, d_tasks=d_tasks, m_tasks=m_tasks)
 
 # ==========================================
 # ৬. টেলিগ্রাম বট ও লজিক (OTP, `/movie`, চ্যানেল ফরওয়ার্ড)
@@ -679,6 +689,10 @@ def logout():
 def ad_logout():
     session.pop('admin', None); return redirect('/admin')
 
+# ==========================================
+# ১০. মেগা ওয়েবহুক ও রান সিস্টেম
+# ==========================================
+
 @app.route('/api/webhook', methods=['POST'])
 def webhook_handler():
     if request.headers.get('content-type') == 'application/json':
@@ -687,8 +701,13 @@ def webhook_handler():
         bot.process_new_updates([update]); return ''
     return 'Forbidden', 403
 
-# ==========================================
-# ১০. রান সিস্টেম
-# ==========================================
+@app.route('/set-webhook')
+def set_webhook():
+    bot.remove_webhook()
+    time.sleep(1)
+    # আপনার ডোমেইন অনুযায়ী ওয়েবহুক সেট করা হচ্ছে
+    s = bot.set_webhook(url=WEBHOOK_URL)
+    return "<h1>Webhook Set Success!</h1><p>আপনার টেলিগ্রাম বট এখন সক্রিয়।</p>" if s else "Webhook Failed!"
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
