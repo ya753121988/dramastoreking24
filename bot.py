@@ -10,9 +10,9 @@ from bson.objectid import ObjectId
 from datetime import datetime, timedelta
 
 # --- ১. কনফিগারেশন ও ডাটাবেস সেটআপ ---
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-MONGO_URI = os.getenv("MONGO_URI")
-FILE_CHANNEL_ID = os.getenv("FILE_CHANNEL_ID")
+BOT_TOKEN = os.getenv("8655043839:AAGMxkYoZXR-nUzlcapZZfVwci09Z6x0-UE")
+MONGO_URI = os.getenv("mongodb+srv://drama:drama@cluster0.sa4kvgu.mongodb.net/?appName=Cluster0")
+FILE_CHANNEL_ID = os.getenv("-1003985353441")
 
 client = MongoClient(MONGO_URI)
 db = client["movie_db"]
