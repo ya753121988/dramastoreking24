@@ -4,3 +4,4 @@ telethon
 motor
 python-multipart
 starlette
+bcrypt
