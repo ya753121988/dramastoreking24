@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "devCommand": "uvicorn bot:app --host 0.0.0.0 --port 8000",
   "builds": [
     {
       "src": "bot.py",
@@ -7,10 +7,6 @@
     }
   ],
   "routes": [
-    {
-      "src": "/api/webhook",
-      "dest": "bot.py"
-    },
     {
       "src": "/(.*)",
       "dest": "bot.py"
