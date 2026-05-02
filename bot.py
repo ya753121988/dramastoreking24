@@ -31,7 +31,7 @@ if not settings_col.find_one({"type": "config"}):
     settings_col.insert_one({"type": "config", "terazone_id": "8888", "ad_link": "https://example.com/ad"})
 
 # ==========================================
-# [FEATURE #3] অ্যাডমিন সিকিউরিটি (বট কন্ট্রোল)
+# [FEATURE #3] অ্যাডমিন সিকিউরিটি
 # ==========================================
 user_states = {}
 
@@ -48,7 +48,7 @@ def admin_menu(message):
     bot.send_message(message.chat.id, "অ্যাডমিন মেনু:", reply_markup=markup)
 
 # ==========================================
-# [FEATURE #4-8] মুভি অ্যাড এবং আনলিমিটেড ইপিসোড সিস্টেম
+# [FEATURE #4-8] মুভি অ্যাড সিস্টেম
 # ==========================================
 @bot.message_handler(commands=['movie'])
 @bot.message_handler(func=lambda m: m.text == "Add Movie 🎬")
@@ -60,12 +60,10 @@ def movie_start(message):
 @bot.message_handler(func=lambda m: m.chat.id in user_states, content_types=['text', 'photo', 'document'])
 def movie_flow(message):
     state = user_states[message.chat.id]
-    
-    if state['step'] == 'name' and message.text:
+    if state['step'] == 'name':
         state['data']['name'] = message.text
         state['step'] = 'poster'
         bot.send_message(message.chat.id, "মুভির পোস্টার (ছবি) পাঠান:")
-        
     elif state['step'] == 'poster' and message.content_type == 'photo':
         fid = message.photo[-1].file_id
         finfo = bot.get_file(fid)
@@ -74,7 +72,6 @@ def movie_flow(message):
         state['data']['episodes'] = []
         markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True).add("Done ✅")
         bot.send_message(message.chat.id, "এখন একটির পর একটি ফাইল পাঠান। শেষ হলে 'Done ✅' দিন।", reply_markup=markup)
-        
     elif state['step'] == 'episodes':
         if message.text == "Done ✅":
             movies_col.insert_one(state['data'])
@@ -85,7 +82,7 @@ def movie_flow(message):
             bot.send_message(message.chat.id, f"সংযুক্ত হয়েছে: {message.document.file_name}")
 
 # ==========================================
-# [FEATURE #9] অ্যাডমিন সেটিংস পরিবর্তন
+# [FEATURE #9] অ্যাড সেটিংস
 # ==========================================
 @bot.message_handler(func=lambda m: m.text == "Ad Settings ⚙️")
 def change_ads(message):
@@ -101,7 +98,7 @@ def save_ads(message):
     except: bot.reply_to(message, "ভুল ফরম্যাট!")
 
 # ==========================================
-# [FEATURE #10-13] টাস্ক ও প্যাকেজ অ্যাড/ডিলিট সিস্টেম
+# [FEATURE #10-13] টাস্ক ও প্যাকেজ ম্যানেজমেন্ট
 # ==========================================
 @bot.message_handler(func=lambda m: m.text == "Add Task 📝")
 def add_task(message):
@@ -141,7 +138,7 @@ def handle_del(call):
     bot.delete_message(call.message.chat.id, call.message.message_id)
 
 # ==========================================
-# [FEATURE #14-15] রেজিস্ট্রেশন ও লগইন সিস্টেম
+# [FEATURE #14-15] রেজিস্ট্রেশন ও লগইন
 # ==========================================
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
@@ -171,27 +168,29 @@ def login():
 @app.route('/')
 def home():
     if 'user_id' not in session: return redirect(url_for('login'))
-    page = int(request.args.get('page', 1))
+    page = request.args.get('page', 1, type=int)
     limit = 30
     skip = (page - 1) * limit
     total = movies_col.count_documents({})
     movies = movies_col.find().sort('_id', DESCENDING).skip(skip).limit(limit)
-    return render_template('index.html', movies=movies, page=page, total_pages=math.ceil(total/limit))
+    total_pages = math.ceil(total/limit) if total > 0 else 1
+    return render_template('index.html', movies=movies, page=page, total_pages=total_pages)
 
 # ==========================================
-# [FEATURE #18] প্রোফাইল আপডেট
+# [FEATURE #18] প্রোফাইল
 # ==========================================
 @app.route('/profile', methods=['GET', 'POST'])
 def profile():
     if 'user_id' not in session: return redirect(url_for('login'))
     u = users_col.find_one({"_id": ObjectId(session['user_id'])})
+    if not u: return redirect(url_for('logout'))
     if request.method == 'POST':
         users_col.update_one({"_id": u['_id']}, {"$set": {"fname": request.form['fname'], "password": request.form['password']}})
         return redirect(url_for('profile'))
     return render_template('profile.html', user=u)
 
 # ==========================================
-# [FEATURE #19] টাস্ক থেকে কয়েন ইনকাম
+# [FEATURE #19] টাস্ক সিস্টেম
 # ==========================================
 @app.route('/tasks')
 def tasks_page():
@@ -201,13 +200,15 @@ def tasks_page():
 @app.route('/claim/<tid>')
 def claim_coin(tid):
     if 'user_id' not in session: return redirect(url_for('login'))
-    t = tasks_col.find_one({"_id": ObjectId(tid)})
-    if t:
-        users_col.update_one({"_id": ObjectId(session['user_id'])}, {"$inc": {"coins": t['coins']}})
+    try:
+        t = tasks_col.find_one({"_id": ObjectId(tid)})
+        if t:
+            users_col.update_one({"_id": ObjectId(session['user_id'])}, {"$inc": {"coins": t['coins']}})
+    except: pass
     return redirect(url_for('tasks_page'))
 
 # ==========================================
-# [FEATURE #20] প্রিমিয়াম বাই এবং অ্যাড রিমুভ (Error Fixed)
+# [FEATURE #20] প্রিমিয়াম বাই এবং ডিটেইলস
 # ==========================================
 @app.route('/premium')
 def premium_store():
@@ -218,38 +219,43 @@ def premium_store():
 @app.route('/buy/<pid>')
 def buy_pkg(pid):
     if 'user_id' not in session: return redirect(url_for('login'))
-    p = packages_col.find_one({"_id": ObjectId(pid)})
-    u = users_col.find_one({"_id": ObjectId(session['user_id'])})
-    if u and p and u['coins'] >= p['price']:
-        expiry = datetime.now() + timedelta(days=p['days'])
-        users_col.update_one({"_id": u['_id']}, {"$inc": {"coins": -p['price']}, "$set": {"premium_until": expiry}})
-        return redirect(url_for('profile'))
-    return "Not enough coins!"
+    try:
+        p = packages_col.find_one({"_id": ObjectId(pid)})
+        u = users_col.find_one({"_id": ObjectId(session['user_id'])})
+        if u and p and u['coins'] >= p['price']:
+            expiry = datetime.now() + timedelta(days=p['days'])
+            users_col.update_one({"_id": u['_id']}, {"$inc": {"coins": -p['price']}, "$set": {"premium_until": expiry}})
+            return redirect(url_for('profile'))
+    except: pass
+    return "Something went wrong!"
 
 @app.route('/movie/<id>')
 def movie_details(id):
     if 'user_id' not in session: return redirect(url_for('login'))
-    m = movies_col.find_one({"_id": ObjectId(id)})
-    c = settings_col.find_one({"type": "config"})
-    u = users_col.find_one({"_id": ObjectId(session['user_id'])})
-    
-    # Internal Server Error ফিক্সিং লজিক
-    is_premium = False
-    if u.get('premium_until'):
-        if isinstance(u['premium_until'], datetime) and u['premium_until'] > datetime.now():
+    try:
+        m = movies_col.find_one({"_id": ObjectId(id)})
+        if not m: return "Movie Not Found", 404
+        c = settings_col.find_one({"type": "config"})
+        u = users_col.find_one({"_id": ObjectId(session['user_id'])})
+        
+        is_premium = False
+        prem = u.get('premium_until')
+        if prem and isinstance(prem, datetime) and prem > datetime.now():
             is_premium = True
             
-    return render_template('details.html', movie=m, config=c, is_premium=is_premium)
+        return render_template('details.html', movie=m, config=c, is_premium=is_premium)
+    except:
+        return "Invalid ID", 400
 
 @app.route('/logout')
 def logout():
     session.clear()
     return redirect(url_for('login'))
 
-# --- টেমপ্লেট জেনারেটর (UI) ---
+# --- টেমপ্লেট জেনারেটর ---
 def create_templates():
     if not os.path.exists('templates'): os.makedirs('templates')
-    css = "<style>body{background:#000;color:#fff;font-family:sans-serif;text-align:center;margin:0;padding-bottom:80px}.nav{background:#111;position:fixed;bottom:0;width:100%;display:flex;justify-content:space-around;padding:15px;border-top:1px solid gold}.nav a{color:gold;text-decoration:none;font-size:12px;font-weight:bold}.card{background:#1a1a1a;margin:10px;padding:10px;border-radius:10px;border:1px solid #333}.btn{display:block;background:gold;color:#000;padding:12px;margin:10px auto;text-decoration:none;border-radius:5px;width:85%;font-weight:bold;border:none}.inp{width:85%;padding:12px;margin:10px;border-radius:5px;border:none;background:#222;color:#fff}img{border-radius:10px; margin-top:10px;}</style>"
+    css = "<style>body{background:#000;color:#fff;font-family:sans-serif;text-align:center;margin:0;padding-bottom:80px}.nav{background:#111;position:fixed;bottom:0;width:100%;display:flex;justify-content:space-around;padding:15px;border-top:1px solid gold;z-index:999}.nav a{color:gold;text-decoration:none;font-size:12px;font-weight:bold}.card{background:#1a1a1a;margin:10px;padding:10px;border-radius:10px;border:1px solid #333}.btn{display:block;background:gold;color:#000;padding:12px;margin:10px auto;text-decoration:none;border-radius:5px;width:85%;font-weight:bold;border:none}.inp{width:85%;padding:12px;margin:10px;border-radius:5px;border:none;background:#222;color:#fff}img{max-width:100%;border-radius:8px}</style>"
     nav = '<div class="nav"><a href="/">হোম</a><a href="/tasks">টাস্ক</a><a href="/premium">প্রিমিয়াম</a><a href="/profile">প্রোফাইল</a></div>'
 
     with open('templates/signup.html', 'w', encoding='utf-8') as f:
@@ -259,28 +265,28 @@ def create_templates():
         f.write(f'<html>{css}<body><h2>লগইন</h2><form method="POST"><input name="mobile" placeholder="Mobile" class="inp" required><input name="password" type="password" placeholder="Password" class="inp" required><button class="btn">Login</button></form><a href="/signup" style="color:white">Signup</a></body></html>')
 
     with open('templates/index.html', 'w', encoding='utf-8') as f:
-        f.write(f'<html>{css}<body><h2>Movies</h2><div style="display:grid;grid-template-columns:1fr 1fr">{"{% for m in movies %}"}<div class="card"><img src="{"{{m.poster}}"}" width="100%"><p>{"{{m.name}}"}</p><a href="/movie/{"{{m._id}}"}" class="btn">WATCH</a></div>{"{% endfor %}"}</div>' +
+        f.write(f'<html>{css}<body><h2>Movies</h2><div style="display:grid;grid-template-columns:1fr 1fr">{"{% for m in movies %}"}<div class="card"><img src="{"{{m.poster}}"}" loading="lazy"><p>{"{{m.name}}"}</p><a href="/movie/{"{{m._id|string}}"}" class="btn">WATCH</a></div>{"{% endfor %}"}</div>' +
                 '<div>{"{% if page > 1 %}"}<a href="/?page={"{{page-1}}"}" style="color:white">Prev</a>{"{% endif %}"} Page {"{{page}}"} {"{% if page < total_pages %}"}<a href="/?page={"{{page+1}}"}" style="color:white">Next</a>{"{% endif %}"}</div>' + nav + '</body></html>')
 
     with open('templates/details.html', 'w', encoding='utf-8') as f:
-        f.write(f'<html>{css}<body><img src="{"{{movie.poster}}"}" width="100%"><h2>{"{{movie.name}}"}</h2>' +
+        f.write(f'<html>{css}<body><img src="{"{{movie.poster}}"}"><h2>{"{{movie.name}}"}</h2>' +
                 '{"{% for ep in movie.episodes %}"}' +
                 '{"{% if is_premium %}"}<a href="https://t.me/share/url?url=FILE_ID_{{"{{ep.file_id}}"}}" class="btn">{"{{ep.name}}"} (No Ads)</a>' +
                 '{"{% else %}"}<a href="{{"{{config.ad_link}}"}}?zone={{"{{config.terazone_id}}"}}&file={{"{{ep.file_id}}"}}" class="btn">{"{{ep.name}}"} (Watch Ad)</a>{"{% endif %}"}' +
                 '{"{% endfor %}"}' + nav + '</body></html>')
 
     with open('templates/profile.html', 'w', encoding='utf-8') as f:
-        f.write(f'<html>{css}<body><h2>Profile</h2><div class="card"><p>Coins: {"{{user.coins}}"}</p><form method="POST"><input name="fname" value="{"{{user.fname}}"}" class="inp"><input name="password" value="{"{{user.password}}"}" class="inp"><button class="btn">Update</button></form><a href="/logout">Logout</a></div>' + nav + '</body></html>')
+        f.write(f'<html>{css}<body><h2>Profile</h2><div class="card"><p>Coins: {"{{user.coins}}"}</p><form method="POST"><input name="fname" value="{"{{user.fname}}"}" class="inp"><input name="password" value="{"{{user.password}}"}" class="inp"><button class="btn">Update</button></form><a href="/logout" style="color:red">Logout</a></div>' + nav + '</body></html>')
     
     with open('templates/tasks.html', 'w', encoding='utf-8') as f:
         f.write(f'<html>{css}<body><h2>Tasks</h2>{"{% for t in tasks %}"}<div class="card"><h4>{"{{t.title}}"}</h4>' +
-                '{"{% if t.type == \'direct\' %}"}<a href="{{"{{t.content}}"}}" target="_blank" onclick="location.href=\'/claim/{{"{{t._id}}"}}\'" class="btn">Complete</a>' +
-                '{"{% else %}"}<button onclick="eval(\'{{"{{t.content}}"}}\'); location.href=\'/claim/{{"{{t._id}}"}}\'" class="btn">Watch Ad</button>{"{% endif %}"}</div>{"{% endfor %}"}' + nav + '</body></html>')
+                '{"{% if t.type == \'direct\' %}"}<a href="{{"{{t.content}}"}}" target="_blank" onclick="location.href=\'/claim/{{"{{t._id|string}}"}}\'" class="btn">Complete</a>' +
+                '{"{% else %}"}<button onclick="eval(\'{{"{{t.content}}"}}\'); location.href=\'/claim/{{"{{t._id|string}}"}}\'" class="btn">Watch Ad</button>{"{% endif %}"}</div>{"{% endfor %}"}' + nav + '</body></html>')
     
     with open('templates/premium.html', 'w', encoding='utf-8') as f:
-        f.write(f'<html>{css}<body><h2>Premium Store</h2><p>Balance: {"{{user.coins}}"}</p>{"{% for p in pkgs %}"}<div class="card"><h4>{"{{p.name}}"}</h4><p>{"{{p.days}}"} Days - {"{{p.price}}"} Coins</p><a href="/buy/{"{{p._id}}"}" class="btn">Buy Now</a></div>{"{% endfor %}"}' + nav + '</body></html>')
+        f.write(f'<html>{css}<body><h2>Premium Store</h2><p>Balance: {"{{user.coins}}"}</p>{"{% for p in pkgs %}"}<div class="card"><h4>{"{{p.name}}"}</h4><p>{"{{p.days}}"} Days - {"{{p.price}}"} Coins</p><a href="/buy/{"{{p._id|string}}"}" class="btn">Buy Now</a></div>{"{% endfor %}"}' + nav + '</body></html>')
 
 if __name__ == '__main__':
     create_templates()
     Thread(target=lambda: bot.polling(none_stop=True)).start()
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
