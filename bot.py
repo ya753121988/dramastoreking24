@@ -49,7 +49,7 @@ def init_db():
         })
     if not ep_ads_col.find_one({"type": "ep_ad_config"}):
         ep_ads_col.insert_one({
-            "type": "ep_ad_config", "direct_link": "", "monetag_id": "",
+            "type": "ep_ad_config", "direct_link": "", "monetag_id": "10351894",
             "unlock_minutes": 30, "active_type": "off", "daily_limit": 10
         })
 
@@ -80,23 +80,22 @@ CSS = """
 """
 
 # ==========================================
-# ৩. ইউজার প্যানেল লেআউট
+# ৩. ইউজার প্যানেল লেআউট (Home, Profile, Tasks, Premium)
 # ==========================================
-# ডুপ্লিকেট ব্লকের এরর ফিক্স করতে লেআউটকে দুই ভাগে ভাগ করা হয়েছে কিন্তু লজিক হুবহু একই আছে
-USER_LAYOUT_HEAD = """
+# Monetag SDK স্ক্রিপ্ট সহ লেআউট ঠিক করা হয়েছে
+USER_LAYOUT = """
 <!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="https://cdn.tailwindcss.com"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+<script src='//libtl.com/sdk.js' data-zone='10351894' data-sdk='show_10351894'></script>
 """ + CSS + """</head><body class="pb-24">
 <header class="glass sticky top-0 z-50 p-4 flex justify-between items-center shadow-xl">
     <img src="{{ config.site_logo }}" class="h-8 md:h-10">
     <div class="text-right"><span class="text-blue-400 font-bold block text-sm">{{ config.site_name }}</span></div>
 </header>
 <div class="marquee"><p>📢 {{ config.header_notice }}</p></div>
-<main class="p-4 container mx-auto">
-"""
+<main class="p-4 container mx-auto">"""
 
-USER_LAYOUT_FOOT = """
-</main>
+USER_FOOTER = """</main>
 <nav class="glass bottom-nav">
     <a href="/" class="{{ 'active' if act == 'home' }}"><i class="fas fa-home text-xl"></i><br>🏠 HOME</a>
     <a href="/tasks" class="{{ 'active' if act == 'task' }}"><i class="fas fa-tasks text-xl"></i><br>📅 TASK</a>
@@ -123,7 +122,7 @@ def home():
     page = int(request.args.get('page', 1))
     movies = list(movies_col.find().sort('_id', -1).skip((page-1)*c['movies_per_page']).limit(c['movies_per_page']))
     for m in movies: m['_id'] = str(m['_id'])
-    return render_template_string(USER_LAYOUT_HEAD + """
+    return render_template_string(USER_LAYOUT + """
     {% block content %}
     <div class="grid-container">
         {% for m in movies %}
@@ -138,19 +137,17 @@ def home():
         <span class="text-blue-400 font-bold text-sm">🔢 Page {{ page }}</span>
         <a href="/?page={{ page+1 }}" class="glass px-5 py-2 rounded-xl text-xs">Next ➡️</a>
     </div>
-    {% endblock %}""" + USER_LAYOUT_FOOT, act='home', config=c, movies=movies, page=page, user=u)
+    {% endblock %}""" + USER_FOOTER, act='home', config=c, movies=movies, page=page, user=u)
 
 @app.route('/movie/<id>')
 def movie_details(id):
     u = get_user()
     if not u: return redirect('/login')
-    try:
-        m = movies_col.find_one({"_id": ObjectId(id)})
-    except:
-        return redirect('/')
+    try: m = movies_col.find_one({"_id": ObjectId(id)})
+    except: return redirect('/')
     if not m: return redirect('/')
     c = settings_col.find_one({"type":"site_config"})
-    return render_template_string(USER_LAYOUT_HEAD + """
+    return render_template_string(USER_LAYOUT + """
     {% block content %}
     <div class="max-w-4xl mx-auto flex flex-col md:flex-row gap-8">
         <img src="{{ m.poster }}" class="w-full md:w-72 rounded-[35px] shadow-2xl border border-white/10">
@@ -175,33 +172,36 @@ def movie_details(id):
             else { 
                 alert("⚠️ Ad Lock! বাটন আনলক করতে একটি এড দেখুন। (৩০ মিনিট আনলক থাকবে)"); 
                 if(d.ad_config.active_type === 'direct') { window.open(d.ad_config.direct_link, '_blank'); unlock(); }
-                else if(d.ad_config.active_type === 'monetag') { window.open('https://google.com', '_blank'); unlock(); }
-                else { window.open(l, '_blank'); }
+                else if(d.ad_config.active_type === 'monetag') {
+                    if(typeof show_10351894 === 'function') {
+                        show_10351894().then(() => { unlock(); window.open(l, '_blank'); });
+                    } else { unlock(); window.open(l, '_blank'); }
+                } else { window.open(l, '_blank'); }
             }
         }
         function unlock() { fetch('/api/unlock', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mobile:'{{ user.mobile }}'})}).then(()=>location.reload()); }
     </script>
-    {% endblock %}""" + USER_LAYOUT_FOOT, act='home', config=c, m=m, user=u)
+    {% endblock %}""" + USER_FOOTER, act='home', config=c, m=m, user=u)
 
 @app.route('/profile')
 def profile():
     u = get_user()
     if not u: return redirect('/login')
     c = settings_col.find_one({"type":"site_config"})
-    return render_template_string(USER_LAYOUT_HEAD + """
+    return render_template_string(USER_LAYOUT + """
     {% block content %}
     <div class="max-w-md mx-auto glass p-10 rounded-[40px] text-center shadow-2xl">
-        <div class="w-24 h-20 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-3xl mx-auto flex items-center justify-center text-4xl font-black mb-6 shadow-xl">{{ (u.get('first_name') or 'U')[0] }}</div>
-        <h2 class="text-2xl font-black uppercase tracking-tighter">{{ u.first_name }} {{ u.last_name }}</h2>
-        <p class="text-xs text-gray-500 mb-8 tracking-widest">📱 {{ u.mobile }}</p>
+        <div class="w-24 h-20 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-3xl mx-auto flex items-center justify-center text-4xl font-black mb-6 shadow-xl">{{ (user.first_name or 'U')[0] }}</div>
+        <h2 class="text-2xl font-black uppercase tracking-tighter">{{ user.first_name }} {{ user.last_name }}</h2>
+        <p class="text-xs text-gray-500 mb-8 tracking-widest">📱 {{ user.mobile }}</p>
         <div class="grid grid-cols-2 gap-4 mb-10">
-            <div class="bg-black/40 p-5 rounded-3xl"><p class="text-[9px] text-gray-500 uppercase font-bold">Balance</p><p class="text-xl font-black text-yellow-400">{{ u.get('balance', 0) }} 🪙</p></div>
-            <div class="bg-black/40 p-5 rounded-3xl"><p class="text-[9px] text-gray-500 uppercase font-bold">Premium</p><p class="text-[11px] font-black {{ 'text-green-400' if u.get('is_premium') else 'text-red-400' }}">{{ 'ACTIVE' if u.get('is_premium') else 'INACTIVE' }}</p></div>
+            <div class="bg-black/40 p-5 rounded-3xl"><p class="text-[9px] text-gray-500 uppercase font-bold">Balance</p><p class="text-xl font-black text-yellow-400">{{ user.get('balance', 0) }} 🪙</p></div>
+            <div class="bg-black/40 p-5 rounded-3xl"><p class="text-[9px] text-gray-500 uppercase font-bold">Premium</p><p class="text-[11px] font-black {{ 'text-green-400' if user.is_premium else 'text-red-400' }}">{{ 'ACTIVE' if user.is_premium else 'INACTIVE' }}</p></div>
         </div>
         <form action="/api/update-profile" method="POST" class="space-y-4 text-left">
-            <input type="hidden" name="mobile" value="{{ u.mobile }}">
-            <input type="text" name="first_name" value="{{ u.first_name }}" placeholder="First Name">
-            <input type="text" name="last_name" value="{{ u.last_name }}" placeholder="Last Name">
+            <input type="hidden" name="mobile" value="{{ user.mobile }}">
+            <input type="text" name="first_name" value="{{ user.first_name }}" placeholder="First Name">
+            <input type="text" name="last_name" value="{{ user.last_name }}" placeholder="Last Name">
             <input type="password" name="password" placeholder="Change Password (Optional)">
             <button class="btn-blue mt-4 shadow-lg shadow-blue-500/20">UPDATE INFO</button>
         </form>
@@ -232,16 +232,7 @@ def register():
     if request.method == 'POST':
         mob = str(request.form.get('mobile'))
         if users_col.find_one({"mobile": mob}): return "ইতিমধ্যে নিবন্ধিত!"
-        users_col.insert_one({
-            "first_name":request.form.get('first_name'),
-            "last_name":request.form.get('last_name'),
-            "mobile":mob,
-            "telegram_id":str(request.form.get('telegram_id')),
-            "password":str(request.form.get('password')),
-            "balance":0,
-            "is_premium":False,
-            "premium_expiry": datetime.now()
-        })
+        users_col.insert_one({"first_name":request.form.get('first_name'),"last_name":request.form.get('last_name'),"mobile":mob,"telegram_id":str(request.form.get('telegram_id')),"password":str(request.form.get('password')),"balance":0,"is_premium":False, "premium_expiry": datetime.now()})
         return redirect('/login')
     return render_template_string("""
     <!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">"""+CSS+"""</head>
@@ -266,7 +257,7 @@ def tasks():
     for t in d_tasks: t['_id'] = str(t['_id'])
     m_tasks = list(monetag_tasks_col.find())
     for t in m_tasks: t['_id'] = str(t['_id'])
-    return render_template_string(USER_LAYOUT_HEAD + """
+    return render_template_string(USER_LAYOUT + """
     {% block content %}
     <h2 class="text-xl font-bold mb-6 text-green-400 uppercase tracking-tighter">💰 Daily Income Tasks</h2>
     <div class="space-y-4">
@@ -300,7 +291,7 @@ def premium_page():
     c = settings_col.find_one({"type":"site_config"})
     plans = list(plans_col.find())
     for p in plans: p['_id'] = str(p['_id'])
-    return render_template_string(USER_LAYOUT_HEAD + """
+    return render_template_string(USER_LAYOUT + """
     {% block content %}
     <h2 class="text-xl font-bold mb-6 text-yellow-400 uppercase tracking-tighter">👑 Premium Member Plans</h2>
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -328,7 +319,7 @@ def premium_page():
 # ৫. মেগা অ্যাডমিন ড্যাশবোর্ড (সব মেনুসহ)
 # ==========================================
 
-ADMIN_HEAD = """
+ADMIN_LAYOUT = """
 <!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="https://cdn.tailwindcss.com"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 """ + CSS + """</head><body class="flex flex-col md:flex-row min-h-screen">
@@ -345,10 +336,9 @@ ADMIN_HEAD = """
         <a href="/admin/logout" class="p-3 text-red-500 mt-12 bg-red-500/10 rounded-xl"><i class="fas fa-sign-out-alt mr-3"></i> LOGOUT ADMIN</a>
     </nav>
 </div>
-<div class="flex-1 p-6 space-y-12 overflow-y-auto">
-"""
+<div class="flex-1 p-6 space-y-12 overflow-y-auto">"""
 
-ADMIN_FOOT = "</div></body></html>"
+ADMIN_FOOTER = """</div></body></html>"""
 
 @app.route('/admin', methods=['GET', 'POST'])
 def admin_login():
@@ -375,7 +365,7 @@ def admin_dashboard():
     for x in d_tasks: x['_id'] = str(x['_id'])
     m_tasks = list(monetag_tasks_col.find())
     for x in m_tasks: x['_id'] = str(x['_id'])
-    return render_template_string(ADMIN_HEAD + """
+    return render_template_string(ADMIN_LAYOUT + """
     {% block admin_content %}
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-6">
         <div class="glass p-6 rounded-[30px] text-center border-b-4 border-blue-500 shadow-xl"><p class="text-[9px] text-gray-500 uppercase font-black">Users</p><p class="text-3xl font-black text-blue-400">{{ u_count }}</p></div>
@@ -468,7 +458,7 @@ def admin_dashboard():
             </div>
         </form>
     </section>
-    {% endblock %}""" + ADMIN_FOOT, config=c, ep_c=ep_c, movies=m, u_count=users_col.count_documents({}), m_count=len(m), plans=plans, d_tasks=d_tasks, m_tasks=m_tasks)
+    {% endblock %}""" + ADMIN_FOOTER, config=c, ep_c=ep_c, movies=m, u_count=users_col.count_documents({}), m_count=len(m), plans=plans, d_tasks=d_tasks, m_tasks=m_tasks)
 
 # ==========================================
 # ৬. টেলিগ্রাম বট ও লজিক (OTP, `/movie`, চ্যানেল ফরওয়ার্ড)
@@ -571,10 +561,8 @@ def admin_add_movie_range():
 @app.route('/admin/movie/delete/<id>')
 def admin_del_movie(id):
     if not session.get('admin'): return redirect('/admin')
-    try:
-        movies_col.delete_one({"_id": ObjectId(id)})
-    except:
-        pass
+    try: movies_col.delete_one({"_id": ObjectId(id)})
+    except: pass
     return redirect('/admin/dashboard')
 
 @app.route('/admin/task/add', methods=['POST'])
@@ -583,10 +571,8 @@ def admin_add_task():
 
 @app.route('/admin/task/delete/<id>')
 def admin_del_task(id):
-    try:
-        tasks_col.delete_one({"_id": ObjectId(id)})
-    except:
-        pass
+    try: tasks_col.delete_one({"_id": ObjectId(id)})
+    except: pass
     return redirect('/admin/dashboard')
 
 @app.route('/admin/monetag/add', methods=['POST'])
@@ -595,10 +581,8 @@ def admin_add_monetag():
 
 @app.route('/admin/monetag/delete/<id>')
 def admin_del_monetag(id):
-    try:
-        monetag_tasks_col.delete_one({"_id": ObjectId(id)})
-    except:
-        pass
+    try: monetag_tasks_col.delete_one({"_id": ObjectId(id)})
+    except: pass
     return redirect('/admin/dashboard')
 
 @app.route('/admin/add-plan', methods=['POST'])
@@ -607,10 +591,8 @@ def admin_add_plan():
 
 @app.route('/admin/plan/delete/<id>')
 def admin_del_plan(id):
-    try:
-        plans_col.delete_one({"_id": ObjectId(id)})
-    except:
-        pass
+    try: plans_col.delete_one({"_id": ObjectId(id)})
+    except: pass
     return redirect('/admin/dashboard')
 
 @app.route('/admin/update-settings', methods=['POST'])
@@ -634,11 +616,8 @@ def api_task_done():
     today = datetime.now().strftime("%Y-%m-%d")
     h = user_tasks_history.find_one({"mobile": d['mobile'], "task_id": d['task_id'], "date": today})
     if h and h.get('count', 0) >= 5: return jsonify({"status": "limit"})
-    
     col = monetag_tasks_col if d['type'] == 'monetag' else tasks_col
     t = col.find_one({"_id": ObjectId(d['task_id'])})
-    if not t: return jsonify({"status": "error"})
-    
     users_col.update_one({"mobile": str(d['mobile'])}, {"$inc": {"balance": int(t['coins'])}})
     user_tasks_history.update_one({"mobile": d['mobile'], "task_id": d['task_id'], "date": today}, {"$inc": {"count": 1}}, upsert=True)
     return jsonify({"status": "success"})
@@ -648,17 +627,12 @@ def api_buy_prem():
     d = request.json
     p = plans_col.find_one({"_id": ObjectId(d['plan_id'])})
     u = users_col.find_one({"mobile": d['mobile']})
-    if not u or u.get('balance', 0) < int(p.get('coins', 0)): return jsonify({"status": "low", "message": "পর্যাপ্ত কয়েন নেই!"})
-    
+    if not u or u.get('balance', 0) < int(p.get('coins', 0)): return jsonify({"status": "low", "message": "Low coins!"})
     current_expiry = u.get('premium_expiry')
-    if not isinstance(current_expiry, datetime) or current_expiry < datetime.now():
-        base_time = datetime.now()
-    else:
-        base_time = current_expiry
-        
+    base_time = current_expiry if isinstance(current_expiry, datetime) and current_expiry > datetime.now() else datetime.now()
     exp = base_time + timedelta(days=int(p['days']))
     users_col.update_one({"mobile": d['mobile']}, {"$inc": {"balance": -int(p['coins'])}, "$set": {"is_premium": True, "premium_expiry": exp}})
-    return jsonify({"status": "success", "message": "Premium Membership Activated!"})
+    return jsonify({"status": "success", "message": "Activated!"})
 
 @app.route('/api/check-access', methods=['POST'])
 def api_check_ep():
@@ -667,7 +641,9 @@ def api_check_ep():
     if u.get('is_premium'): return jsonify({"status": "unlocked"})
     un = ep_unlock_col.find_one({"mobile": str(u['mobile'])})
     if un and datetime.now() < un.get('expiry', datetime.now()): return jsonify({"status": "unlocked"})
-    return jsonify({"status": "locked", "ad_config": ep_ads_col.find_one({"type":"ep_ad_config"})})
+    ad_conf = ep_ads_col.find_one({"type":"ep_ad_config"})
+    ad_conf['_id'] = str(ad_conf['_id']) # JSON serializable fixed
+    return jsonify({"status": "locked", "ad_config": ad_conf})
 
 @app.route('/api/unlock', methods=['POST'])
 def api_unlock_final():
@@ -700,14 +676,6 @@ def webhook_handler():
         update = telebot.types.Update.de_json(json_str)
         bot.process_new_updates([update]); return ''
     return 'Forbidden', 403
-
-@app.route('/set-webhook')
-def set_webhook():
-    bot.remove_webhook()
-    time.sleep(1)
-    # আপনার ডোমেইন অনুযায়ী ওয়েবহুক সেট করা হচ্ছে
-    s = bot.set_webhook(url=WEBHOOK_URL)
-    return "<h1>Webhook Set Success!</h1><p>আপনার টেলিগ্রাম বট এখন সক্রিয়।</p>" if s else "Webhook Failed!"
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
