@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, url_for, session
 from pymongo import MongoClient, DESCENDING
 from bson.objectid import ObjectId
-from threading import Thread
+from telebot import types
 
 # ==========================================
 # [FEATURE #1] কনফিগারেশন এবং ডাটাবেস কানেকশন
@@ -14,7 +14,7 @@ TOKEN = '8655043839:AAGmoyWwzJFAi9hOovKNeySOp6UzrHBPibQ'
 MONGO_URI = 'mongodb+srv://drama:drama@cluster0.sa4kvgu.mongodb.net/?appName=Cluster0' 
 ADMIN_ID = 7120801813 # আপনার টেলিগ্রাম আইডি
 
-bot = telebot.TeleBot(TOKEN)
+bot = telebot.TeleBot(TOKEN, threaded=False)
 app = Flask(__name__)
 app.secret_key = "movie_ultra_secure_99"
 
@@ -31,6 +31,19 @@ if not settings_col.find_one({"type": "config"}):
     settings_col.insert_one({"type": "config", "terazone_id": "8888", "ad_link": "https://example.com/ad"})
 
 # ==========================================
+# WEBHOOK ROUTE (Vercel Fix)
+# ==========================================
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    if request.headers.get('content-type') == 'application/json':
+        json_string = request.get_data().decode('utf-8')
+        update = types.Update.de_json(json_string)
+        bot.process_new_updates([update])
+        return ''
+    else:
+        return 'Forbidden', 403
+
+# ==========================================
 # [FEATURE #3] অ্যাডমিন সিকিউরিটি
 # ==========================================
 user_states = {}
@@ -41,14 +54,14 @@ def is_admin(message):
 @bot.message_handler(commands=['admin'])
 def admin_menu(message):
     if not is_admin(message): return
-    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add("Add Movie 🎬", "Add Task 📝")
     markup.add("Add Package 🎁", "Ad Settings ⚙️")
     markup.add("Delete Task ❌", "Delete Package 🗑️")
     bot.send_message(message.chat.id, "অ্যাডমিন মেনু:", reply_markup=markup)
 
 # ==========================================
-# [FEATURE #4-8] মুভি অ্যাড সিস্টেম
+# [FEATURE #4-8] মুভি অ্যাড সিস্টেম (Unlimited Episodes)
 # ==========================================
 @bot.message_handler(commands=['movie'])
 @bot.message_handler(func=lambda m: m.text == "Add Movie 🎬")
@@ -60,7 +73,7 @@ def movie_start(message):
 @bot.message_handler(func=lambda m: m.chat.id in user_states, content_types=['text', 'photo', 'document'])
 def movie_flow(message):
     state = user_states[message.chat.id]
-    if state['step'] == 'name':
+    if state['step'] == 'name' and message.text:
         state['data']['name'] = message.text
         state['step'] = 'poster'
         bot.send_message(message.chat.id, "মুভির পোস্টার (ছবি) পাঠান:")
@@ -70,12 +83,12 @@ def movie_flow(message):
         state['data']['poster'] = f"https://api.telegram.org/file/bot{TOKEN}/{finfo.file_path}"
         state['step'] = 'episodes'
         state['data']['episodes'] = []
-        markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True).add("Done ✅")
-        bot.send_message(message.chat.id, "এখন একটির পর একটি ফাইল পাঠান। শেষ হলে 'Done ✅' দিন।", reply_markup=markup)
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True).add("Done ✅")
+        bot.send_message(message.chat.id, "এখন ফাইল পাঠান। শেষ হলে 'Done ✅' দিন।", reply_markup=markup)
     elif state['step'] == 'episodes':
         if message.text == "Done ✅":
             movies_col.insert_one(state['data'])
-            bot.send_message(message.chat.id, "মুভি সাইটে সফলভাবে আপলোড হয়েছে!", reply_markup=telebot.types.ReplyKeyboardRemove())
+            bot.send_message(message.chat.id, "মুভি সাইটে আপলোড হয়েছে!", reply_markup=types.ReplyKeyboardRemove())
             del user_states[message.chat.id]
         elif message.document:
             state['data']['episodes'].append({'name': message.document.file_name, 'file_id': message.document.file_id})
@@ -87,29 +100,29 @@ def movie_flow(message):
 @bot.message_handler(func=lambda m: m.text == "Ad Settings ⚙️")
 def change_ads(message):
     if not is_admin(message): return
-    msg = bot.send_message(message.chat.id, "Terazone ID এবং Ad Link দিন (স্পেস দিয়ে আলাদা করুন):")
+    msg = bot.send_message(message.chat.id, "Terazone ID এবং Ad Link দিন (স্পেস দিয়ে):")
     bot.register_next_step_handler(msg, save_ads)
 
 def save_ads(message):
     try:
         tid, alink = message.text.split(' ')
         settings_col.update_one({"type": "config"}, {"$set": {"terazone_id": tid, "ad_link": alink}})
-        bot.reply_to(message, "সেটিংস আপডেট হয়েছে!")
+        bot.reply_to(message, "আপডেট হয়েছে!")
     except: bot.reply_to(message, "ভুল ফরম্যাট!")
 
 # ==========================================
-# [FEATURE #10-13] টাস্ক ও প্যাকেজ ম্যানেজমেন্ট
+# [FEATURE #10-13] টাস্ক ও প্যাকেজ
 # ==========================================
 @bot.message_handler(func=lambda m: m.text == "Add Task 📝")
 def add_task(message):
     if not is_admin(message): return
-    msg = bot.send_message(message.chat.id, "টাস্ক ডাটা দিন: Type(direct/monetag) | Title | Content | Coins")
+    msg = bot.send_message(message.chat.id, "Type(direct/monetag) | Title | Content | Coins")
     bot.register_next_step_handler(msg, lambda m: save_item(m, tasks_col))
 
 @bot.message_handler(func=lambda m: m.text == "Add Package 🎁")
 def add_pkg(message):
     if not is_admin(message): return
-    msg = bot.send_message(message.chat.id, "প্যাকেজ ডাটা দিন: Name | Days | Coins")
+    msg = bot.send_message(message.chat.id, "Name | Days | Coins")
     bot.register_next_step_handler(msg, lambda m: save_item(m, packages_col))
 
 def save_item(message, col):
@@ -119,7 +132,7 @@ def save_item(message, col):
             col.insert_one({"type": p[0].strip(), "title": p[1].strip(), "content": p[2].strip(), "coins": int(p[3].strip())})
         else:
             col.insert_one({"name": p[0].strip(), "days": int(p[1].strip()), "price": int(p[2].strip())})
-        bot.reply_to(message, "সফলভাবে সেভ হয়েছে!")
+        bot.reply_to(message, "সেভ হয়েছে!")
     except: bot.reply_to(message, "ভুল ফরম্যাট!")
 
 @bot.message_handler(func=lambda m: m.text in ["Delete Task ❌", "Delete Package 🗑️"])
@@ -127,18 +140,18 @@ def delete_list(message):
     if not is_admin(message): return
     col = tasks_col if "Task" in message.text else packages_col
     for item in col.find():
-        btn = telebot.types.InlineKeyboardMarkup().add(telebot.types.InlineKeyboardButton("Delete", callback_data=f"del_{'t' if col==tasks_col else 'p'}_{item['_id']}"))
+        btn = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("Delete", callback_data=f"del_{'t' if col==tasks_col else 'p'}_{item['_id']}"))
         bot.send_message(message.chat.id, f"Item: {item.get('title') or item.get('name')}", reply_markup=btn)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("del_"))
 def handle_del(call):
-    _, type, oid = call.data.split('_')
-    (tasks_col if type=='t' else packages_col).delete_one({"_id": ObjectId(oid)})
+    _, itype, oid = call.data.split('_')
+    (tasks_col if itype=='t' else packages_col).delete_one({"_id": ObjectId(oid)})
     bot.answer_callback_query(call.id, "Deleted!")
     bot.delete_message(call.message.chat.id, call.message.message_id)
 
 # ==========================================
-# [FEATURE #14-15] রেজিস্ট্রেশন ও লগইন
+# [FEATURE #14-15] সাইনআপ ও লগইন
 # ==========================================
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
@@ -173,7 +186,7 @@ def home():
     skip = (page - 1) * limit
     total = movies_col.count_documents({})
     movies = movies_col.find().sort('_id', DESCENDING).skip(skip).limit(limit)
-    total_pages = math.ceil(total/limit) if total > 0 else 1
+    total_pages = max(1, math.ceil(total/limit))
     return render_template('index.html', movies=movies, page=page, total_pages=total_pages)
 
 # ==========================================
@@ -208,7 +221,7 @@ def claim_coin(tid):
     return redirect(url_for('tasks_page'))
 
 # ==========================================
-# [FEATURE #20] প্রিমিয়াম বাই এবং ডিটেইলস
+# [FEATURE #20] প্রিমিয়াম বাই ও ডিটেইলস
 # ==========================================
 @app.route('/premium')
 def premium_store():
@@ -227,14 +240,14 @@ def buy_pkg(pid):
             users_col.update_one({"_id": u['_id']}, {"$inc": {"coins": -p['price']}, "$set": {"premium_until": expiry}})
             return redirect(url_for('profile'))
     except: pass
-    return "Something went wrong!"
+    return "Failed!"
 
 @app.route('/movie/<id>')
 def movie_details(id):
     if 'user_id' not in session: return redirect(url_for('login'))
     try:
         m = movies_col.find_one({"_id": ObjectId(id)})
-        if not m: return "Movie Not Found", 404
+        if not m: return "Not Found", 404
         c = settings_col.find_one({"type": "config"})
         u = users_col.find_one({"_id": ObjectId(session['user_id'])})
         
@@ -244,8 +257,7 @@ def movie_details(id):
             is_premium = True
             
         return render_template('details.html', movie=m, config=c, is_premium=is_premium)
-    except:
-        return "Invalid ID", 400
+    except: return "Error", 400
 
 @app.route('/logout')
 def logout():
@@ -258,16 +270,20 @@ def create_templates():
     css = "<style>body{background:#000;color:#fff;font-family:sans-serif;text-align:center;margin:0;padding-bottom:80px}.nav{background:#111;position:fixed;bottom:0;width:100%;display:flex;justify-content:space-around;padding:15px;border-top:1px solid gold;z-index:999}.nav a{color:gold;text-decoration:none;font-size:12px;font-weight:bold}.card{background:#1a1a1a;margin:10px;padding:10px;border-radius:10px;border:1px solid #333}.btn{display:block;background:gold;color:#000;padding:12px;margin:10px auto;text-decoration:none;border-radius:5px;width:85%;font-weight:bold;border:none}.inp{width:85%;padding:12px;margin:10px;border-radius:5px;border:none;background:#222;color:#fff}img{max-width:100%;border-radius:8px}</style>"
     nav = '<div class="nav"><a href="/">হোম</a><a href="/tasks">টাস্ক</a><a href="/premium">প্রিমিয়াম</a><a href="/profile">প্রোফাইল</a></div>'
 
+    # Signup
     with open('templates/signup.html', 'w', encoding='utf-8') as f:
         f.write(f'<html>{css}<body><h2>রেজিস্ট্রেশন</h2><form method="POST"><input name="fname" placeholder="First Name" class="inp" required><input name="lname" placeholder="Last Name" class="inp" required><input name="mobile" placeholder="Mobile" class="inp" required><input name="password" type="password" placeholder="Password" class="inp" required><button class="btn">Register</button></form><a href="/login" style="color:white">Login</a></body></html>')
     
+    # Login
     with open('templates/login.html', 'w', encoding='utf-8') as f:
         f.write(f'<html>{css}<body><h2>লগইন</h2><form method="POST"><input name="mobile" placeholder="Mobile" class="inp" required><input name="password" type="password" placeholder="Password" class="inp" required><button class="btn">Login</button></form><a href="/signup" style="color:white">Signup</a></body></html>')
 
+    # Index
     with open('templates/index.html', 'w', encoding='utf-8') as f:
         f.write(f'<html>{css}<body><h2>Movies</h2><div style="display:grid;grid-template-columns:1fr 1fr">{"{% for m in movies %}"}<div class="card"><img src="{"{{m.poster}}"}" loading="lazy"><p>{"{{m.name}}"}</p><a href="/movie/{"{{m._id|string}}"}" class="btn">WATCH</a></div>{"{% endfor %}"}</div>' +
                 '<div>{"{% if page > 1 %}"}<a href="/?page={"{{page-1}}"}" style="color:white">Prev</a>{"{% endif %}"} Page {"{{page}}"} {"{% if page < total_pages %}"}<a href="/?page={"{{page+1}}"}" style="color:white">Next</a>{"{% endif %}"}</div>' + nav + '</body></html>')
 
+    # Details
     with open('templates/details.html', 'w', encoding='utf-8') as f:
         f.write(f'<html>{css}<body><img src="{"{{movie.poster}}"}"><h2>{"{{movie.name}}"}</h2>' +
                 '{"{% for ep in movie.episodes %}"}' +
@@ -275,6 +291,7 @@ def create_templates():
                 '{"{% else %}"}<a href="{{"{{config.ad_link}}"}}?zone={{"{{config.terazone_id}}"}}&file={{"{{ep.file_id}}"}}" class="btn">{"{{ep.name}}"} (Watch Ad)</a>{"{% endif %}"}' +
                 '{"{% endfor %}"}' + nav + '</body></html>')
 
+    # Profile, Tasks, Premium
     with open('templates/profile.html', 'w', encoding='utf-8') as f:
         f.write(f'<html>{css}<body><h2>Profile</h2><div class="card"><p>Coins: {"{{user.coins}}"}</p><form method="POST"><input name="fname" value="{"{{user.fname}}"}" class="inp"><input name="password" value="{"{{user.password}}"}" class="inp"><button class="btn">Update</button></form><a href="/logout" style="color:red">Logout</a></div>' + nav + '</body></html>')
     
@@ -288,5 +305,5 @@ def create_templates():
 
 if __name__ == '__main__':
     create_templates()
-    Thread(target=lambda: bot.polling(none_stop=True)).start()
+    # bot.polling(none_stop=True) লাইনটি ভার্সেলে কাজ করবে না বিধায় সরানো হয়েছে
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
