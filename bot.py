@@ -447,7 +447,11 @@ def bot_get_movie_files(message):
 # ৬. রান অ্যাপ্লিকেশন
 # ---------------------------------------------------------
 
+# কোডের একদম শেষে (বট ও সার্ভার রান করার অংশ)
 if __name__ == "__main__":
-    t = Thread(target=lambda: app.run(host="0.0.0.0", port=8080))
+    # টেলিগ্রাম বট আলাদা থ্রেডে চালানো
+    t = Thread(target=lambda: bot.infinity_polling())
     t.start()
-    bot.infinity_polling()
+    
+    # লোকাল চেক করার জন্য (ভার্সেলে এটি প্রয়োজন নেই, তবে রাখলে সমস্যা নেই)
+    app.run(host="0.0.0.0", port=8080)
