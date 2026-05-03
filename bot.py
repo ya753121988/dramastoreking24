@@ -249,14 +249,22 @@ def movie_detail(id):
                     const zid = "{{{{ep_zid}}}}";
                     const container = document.getElementById('ad-inject');
                     container.innerHTML = "";
+                    
+                    // Monetag Ad Logic Fix
                     const s = document.createElement('script');
-                    s.src = '//libtl.com/sdk.js';
+                    s.src = 'https://libtl.com/sdk.js';
                     s.setAttribute('data-zone', zid);
                     s.setAttribute('data-sdk', 'show_'+zid);
+                    s.async = true;
+                    s.onload = () => {{
+                        if (typeof window['show_'+zid] === 'function') {{
+                            window['show_'+zid]();
+                        }}
+                    }};
                     container.appendChild(s);
                     
                     fetch('/track_ad/{{{{movie._id}}}}').then(() => {{
-                        setTimeout(() => {{ location.reload(); }}, 6000);
+                        setTimeout(() => {{ location.reload(); }}, 8000);
                     }});
                 }}
             </script>
@@ -317,11 +325,20 @@ def tasks():
                     const zid = zones[Math.floor(Math.random() * zones.length)];
                     const container = document.getElementById('task-ad-'+tid);
                     container.innerHTML = "";
+                    
+                    // Monetag Ad Logic Fix
                     const s = document.createElement('script');
-                    s.src = '//libtl.com/sdk.js';
+                    s.src = 'https://libtl.com/sdk.js';
                     s.setAttribute('data-zone', zid);
                     s.setAttribute('data-sdk', 'show_'+zid);
+                    s.async = true;
+                    s.onload = () => {{
+                        if (typeof window['show_'+zid] === 'function') {{
+                            window['show_'+zid]();
+                        }}
+                    }};
                     container.appendChild(s);
+                    
                     fetch('/claim/ad/'+tid);
                     alert("অ্যাড লোড হচ্ছে... অনুগ্রহ করে কিছুক্ষণ অপেক্ষা করুন।");
                 }}
@@ -405,7 +422,7 @@ def admin_login():
     if 'admin' in session: return redirect('/admin/dashboard')
     if request.method == 'POST' and request.form.get('p') == ADMIN_PASS:
         session['admin'] = True; return redirect('/admin/dashboard')
-    return render_template_string(f"<html><body style='background:#0b0e14;color:white;padding:50px;text-align:center;'><form method='post'><h2>Admin Access</h2><input type='password' name='p' style='padding:15px;border-radius:10px;'><button class='btn' style='max-width:200px;margin:20px auto;'>Login</button></form></body></html>")
+    return render_template_string(f"<html><head><meta name='viewport' content='width=device-width, initial-scale=1'>{STYLE}</head><body><div class='container' style='max-width:450px; margin-top:50px;'><div class='glass-panel'><h2>Admin Access</h2><form method='post'><input type='password' name='p' style='padding:15px;border-radius:10px;'><button class='btn' style='max-width:200px;margin:20px auto;'>Login</button></form></div></div></body></html>")
 
 @app.route('/admin/dashboard')
 def admin_dash():
