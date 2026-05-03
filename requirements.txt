@@ -10,3 +10,8 @@ python-dotenv
 flask
 pymongo
 pyTelegramBotAPI
+flask
+pyrogram
+tgcrypto
+pymongo
+dnspython
