@@ -1,291 +1,396 @@
 import os
-import telebot
+import threading
 import math
 from datetime import datetime, timedelta
-from flask import Flask, render_template, request, redirect, url_for, session
-from pymongo import MongoClient, DESCENDING
+from flask import Flask, render_template_string, request, redirect, session, url_for, flash
+from pyrogram import Client, filters
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from pymongo import MongoClient
 from bson.objectid import ObjectId
-from telebot import types
+from werkzeug.security import generate_password_hash, check_password_hash
 
-# ==========================================
-# [FEATURE #1] কনফিগারেশন
-# ==========================================
-TOKEN = '8655043839:AAGmoyWwzJFAi9hOovKNeySOp6UzrHBPibQ' 
-MONGO_URI = 'mongodb+srv://drama:drama@cluster0.sa4kvgu.mongodb.net/?appName=Cluster0' 
-ADMIN_ID = 7120801813 # আপনার আইডি (অন্য কেউ কন্ট্রোল করতে পারবে না)
+# --- ⚙️ কনফিগারেশন ---
+API_ID = int(os.getenv("API_ID", "29904834"))
+API_HASH = os.getenv("API_HASH", "8b4fd9ef578af114502feeafa2d31938")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8655043839:AAGmoyWwzJFAi9hOovKNeySOp6UzrHBPibQ")
+MONGO_URL = os.getenv("MONGO_URL", "mongodb+srv://drama:drama@cluster0.sa4kvgu.mongodb.net/?appName=Cluster0")
+ADMIN_ID = int(os.getenv("ADMIN_ID", "7120801813"))
+ADMIN_PASS = os.getenv("ADMIN_PASS", "admin123")
 
-bot = telebot.TeleBot(TOKEN, threaded=False)
-app = Flask(__name__)
-app.secret_key = "income_king_secret_key_99"
-
-client = MongoClient(MONGO_URI)
-db = client['movie_store_v3']
+# 🗄️ ডাটাবেস কানেকশন
+client = MongoClient(MONGO_URL)
+db = client['MoviePremiumDB']
 movies_col = db['movies']
-settings_col = db['settings']
-tasks_col = db['tasks']
 users_col = db['users']
+link_tasks_col = db['link_tasks']
+ad_tasks_col = db['ad_tasks']
 packages_col = db['packages']
+settings_col = db['settings']
 
-# ডিফল্ট অ্যাড সেটিংস (Admin Panel থেকে চেঞ্জ করা যাবে)
-if not settings_col.find_one({"type": "config"}):
-    settings_col.insert_one({"type": "config", "terazone_id": "8888", "ad_link": "https://example.com/ad"})
+# 🛠️ ডিফল্ট সেটিংস
+if not settings_col.find_one({"key": "config"}):
+    settings_col.insert_one({
+        "key": "config",
+        "site_name": "Premium Cinema",
+        "notice": "🌟 আমাদের মুভি পোর্টালে স্বাগতম! টাস্ক কমপ্লিট করে কয়েন ইনকাম করুন।"
+    })
 
-# ==========================================
-# [WEBHOOK] Vercel এর জন্য
-# ==========================================
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        update = types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-        return ''
-    return 'Forbidden', 403
+app = Flask(__name__)
+app.secret_key = "super_secret_key_pro"
 
-# ==========================================
-# [BOT ADMIN PANEL] মেনু ও কন্ট্রোল
-# ==========================================
-user_states = {}
-
-def is_admin(message):
-    return message.from_user.id == ADMIN_ID
-
-@bot.message_handler(commands=['admin', 'start'])
-def admin_panel(message):
-    if not is_admin(message): return
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.row("Add Movie 🎬", "Add Task 📝")
-    markup.row("Add Package 🎁", "Ad Settings ⚙️")
-    markup.row("Delete Task ❌", "Delete Package 🗑️")
-    bot.send_message(message.chat.id, "--- অ্যাডমিন কন্ট্রোল প্যানেল ---", reply_markup=markup)
-
-# মুভি আপলোড সিস্টেম (/movie)
-@bot.message_handler(commands=['movie'])
-@bot.message_handler(func=lambda m: m.text == "Add Movie 🎬")
-def movie_wizard(message):
-    if not is_admin(message): return
-    user_states[message.chat.id] = {'step': 'name', 'data': {'episodes': []}}
-    bot.send_message(message.chat.id, "মুভির নাম লিখুন:")
-
-@bot.message_handler(func=lambda m: m.chat.id in user_states, content_types=['text', 'photo', 'document'])
-def movie_flow(message):
-    state = user_states[message.chat.id]
+# --- 🎨 প্রিমিয়াম সিএসএস স্টাইল ---
+STYLE = """
+<style>
+    :root { --primary: #00d2ff; --secondary: #3a7bd5; --dark: #0f172a; --card: #1e293b; --text: #f8fafc; }
+    body { background: var(--dark); color: var(--text); font-family: 'Poppins', sans-serif; margin: 0; padding-bottom: 80px; overflow-x: hidden; }
+    header { background: linear-gradient(90deg, var(--primary), var(--secondary)); padding: 15px; text-align: center; font-size: 22px; font-weight: bold; position: sticky; top: 0; z-index: 1000; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+    .notice-bar { background: #334155; padding: 8px; font-size: 13px; text-align: center; border-bottom: 1px solid var(--primary); }
+    .container { padding: 15px; max-width: 1200px; margin: auto; }
     
-    if state['step'] == 'name' and message.text:
-        state['data']['name'] = message.text
-        state['step'] = 'poster'
-        bot.send_message(message.chat.id, "মুভির পোস্টার পাঠান (ছবি):")
-        
-    elif state['step'] == 'poster' and message.content_type == 'photo':
-        fid = message.photo[-1].file_id
-        finfo = bot.get_file(fid)
-        # অটো পোস্টার URL জেনারেশন (টেলিগ্রাম সার্ভার থেকে)
-        state['data']['poster'] = f"https://api.telegram.org/file/bot{TOKEN}/{finfo.file_path}"
-        state['step'] = 'episodes'
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True).add("Done ✅")
-        bot.send_message(message.chat.id, "এখন ইপিসোড বা মুভি ফাইলগুলো একটা একটা করে পাঠান। শেষ হলে 'Done ✅' দিন।", reply_markup=markup)
-        
-    elif state['step'] == 'episodes':
-        if message.text == "Done ✅":
-            movies_col.insert_one(state['data'])
-            bot.send_message(message.chat.id, "✅ মুভিটি সফলভাবে সাইটে আপলোড হয়েছে!", reply_markup=types.ReplyKeyboardRemove())
-            del user_states[message.chat.id]
-        elif message.document:
-            state['data']['episodes'].append({'name': message.document.file_name, 'file_id': message.document.file_id})
-            bot.send_message(message.chat.id, f"সংযুক্ত: {message.document.file_name}")
+    /* 🎞️ স্লাইডার স্টাইল */
+    .slider { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 15px; padding: 10px 0; scrollbar-width: none; }
+    .slider-item { flex: 0 0 160px; scroll-snap-align: start; position: relative; transition: 0.3s; }
+    .slider-item img { width: 100%; height: 230px; border-radius: 15px; object-fit: cover; border: 2px solid #334155; }
+    .top-badge { position: absolute; top: 8px; left: 8px; background: gold; color: black; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: bold; }
 
-# টাস্ক অ্যাড (Direct & Monetag)
-@bot.message_handler(func=lambda m: m.text == "Add Task 📝")
-def task_start(message):
-    if not is_admin(message): return
-    msg = bot.send_message(message.chat.id, "টাস্ক ডাটা দিন:\nType (direct/monetag) | Title | Link or Script | Coins")
-    bot.register_next_step_handler(msg, save_task_data)
+    /* 📦 গ্রিড ও কার্ড */
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 15px; margin-top: 20px; }
+    .card { background: var(--card); border-radius: 15px; overflow: hidden; border: 1px solid #334155; text-decoration: none; color: inherit; transition: 0.3s; }
+    .card:hover { transform: scale(1.03); border-color: var(--primary); }
+    .card img { width: 100%; height: 200px; object-fit: cover; }
+    .card h3 { font-size: 13px; padding: 10px; margin: 0; text-align: center; }
+    
+    .btn { background: linear-gradient(90deg, var(--primary), var(--secondary)); color: white; padding: 12px; border-radius: 10px; text-decoration: none; display: block; text-align: center; border: none; font-weight: bold; cursor: pointer; margin: 5px 0; }
+    .btn-red { background: #ef4444; }
+    input { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #334155; background: #0f172a; color: white; box-sizing: border-box; margin-bottom: 15px; }
+    
+    .bottom-nav { position: fixed; bottom: 0; width: 100%; background: var(--card); display: flex; justify-content: space-around; padding: 12px 0; border-top: 1px solid #334155; box-shadow: 0 -5px 15px rgba(0,0,0,0.2); }
+    .bottom-nav a { color: #94a3b8; text-decoration: none; font-size: 13px; text-align: center; font-weight: bold; }
+    .bottom-nav a.active { color: var(--primary); }
+</style>
+"""
 
-def save_task_data(message):
-    try:
-        p = message.text.split('|')
-        tasks_col.insert_one({"type": p[0].strip(), "title": p[1].strip(), "content": p[2].strip(), "coins": int(p[3].strip())})
-        bot.reply_to(message, "✅ টাস্ক অ্যাড হয়েছে!")
-    except: bot.reply_to(message, "ভুল ফরম্যাট! (Type|Title|Link|Coins)")
+# --- 🛠️ হেল্পার ফাংশন ---
+def get_conf(): return settings_col.find_one({"key": "config"})
+def get_user():
+    if 'uid' in session: return users_col.find_one({"_id": ObjectId(session['uid'])})
+    return None
+def is_premium(user):
+    if not user or 'premium_until' not in user: return False
+    return user['premium_until'] > datetime.utcnow()
 
-# প্যাকেজ অ্যাড (Premium)
-@bot.message_handler(func=lambda m: m.text == "Add Package 🎁")
-def pkg_start(message):
-    if not is_admin(message): return
-    msg = bot.send_message(message.chat.id, "প্যাকেজ ডাটা দিন:\nName | Days | Price (Coins)")
-    bot.register_next_step_handler(msg, save_pkg_data)
-
-def save_pkg_data(message):
-    try:
-        p = message.text.split('|')
-        packages_col.insert_one({"name": p[0].strip(), "days": int(p[1].strip()), "price": int(p[2].strip())})
-        bot.reply_to(message, "✅ প্যাকেজ সেভ হয়েছে!")
-    except: bot.reply_to(message, "ভুল ফরম্যাট!")
-
-# অ্যাড সেটিংস (Income Controller)
-@bot.message_handler(func=lambda m: m.text == "Ad Settings ⚙️")
-def ad_settings_start(message):
-    if not is_admin(message): return
-    msg = bot.send_message(message.chat.id, "Terazone_ID [স্পেস] Ad_Link দিন:")
-    bot.register_next_step_handler(msg, save_ad_settings)
-
-def save_ad_settings(message):
-    try:
-        tid, alink = message.text.split(' ')
-        settings_col.update_one({"type": "config"}, {"$set": {"terazone_id": tid, "ad_link": alink}})
-        bot.reply_to(message, "✅ ইনকাম সেটিংস আপডেট হয়েছে!")
-    except: bot.reply_to(message, "ভুল ফরম্যাট! Example: 1234 https://ads.com")
-
-# ডিলিট সিস্টেম
-@bot.message_handler(func=lambda m: m.text in ["Delete Task ❌", "Delete Package 🗑️"])
-def delete_wizard(message):
-    if not is_admin(message): return
-    col = tasks_col if "Task" in message.text else packages_col
-    for item in col.find():
-        btn = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("Delete Now", callback_data=f"del_{'t' if col==tasks_col else 'p'}_{item['_id']}"))
-        bot.send_message(message.chat.id, f"Item: {item.get('title') or item.get('name')}", reply_markup=btn)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("del_"))
-def handle_deletion(call):
-    _, t, oid = call.data.split('_')
-    (tasks_col if t=='t' else packages_col).delete_one({"_id": ObjectId(oid)})
-    bot.answer_callback_query(call.id, "Deleted Successfully!")
-    bot.delete_message(call.message.chat.id, call.message.message_id)
-
-# ==========================================
-# [FLASK WEBSITE] ইনকাম ও ইউজার প্যানেল
-# ==========================================
-
-# রেজিস্ট্রেশন ও লগইন
-@app.route('/signup', methods=['GET', 'POST'])
-def signup():
+# --- 🔐 রেজিস্ট্রেশন ও লগইন ---
+@app.route('/register', methods=['GET', 'POST'])
+def register():
     if request.method == 'POST':
-        if users_col.find_one({"mobile": request.form['mobile']}): return "Mobile already registered!"
-        users_col.insert_one({
-            "fname": request.form['fname'], "lname": request.form['lname'],
-            "mobile": request.form['mobile'], "password": request.form['password'],
-            "coins": 0, "premium_until": None
-        })
-        return redirect(url_for('login'))
-    return render_template('signup.html')
+        fname, lname, mobile = request.form.get('fname'), request.form.get('lname'), request.form.get('mobile')
+        password = generate_password_hash(request.form.get('password'))
+        if users_col.find_one({"mobile": mobile}): flash("❌ নম্বরটি ইতিমধ্যে নিবন্ধিত!")
+        else:
+            users_col.insert_one({"fname": fname, "lname": lname, "mobile": mobile, "password": password, "coins": 0, "premium_until": datetime.utcnow()})
+            return redirect('/login')
+    return render_template_string(f"<html><head>{STYLE}</head><body><div class='container'><h2>💎 Register</h2><form method='post'><input name='fname' placeholder='First Name' required><input name='lname' placeholder='Last Name' required><input name='mobile' placeholder='Mobile Number' required><input type='password' name='password' placeholder='Password' required><button class='btn'>🚀 Register Now</button></form><br><a href='/login' style='color:gray;text-decoration:none;'>লগইন করুন</a></div></body></html>")
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        u = users_col.find_one({"mobile": request.form['mobile'], "password": request.form['password']})
-        if u:
-            session['user_id'] = str(u['_id'])
-            return redirect(url_for('home'))
-        return "Invalid Mobile or Password!"
-    return render_template('login.html')
+        user = users_col.find_one({"mobile": request.form.get('mobile')})
+        if user and check_password_hash(user['password'], request.form.get('password')):
+            session['uid'] = str(user['_id'])
+            return redirect('/')
+        flash("❌ মোবাইল নম্বর বা পাসওয়ার্ড ভুল!")
+    return render_template_string(f"<html><head>{STYLE}</head><body><div class='container'><h2>🔑 Login</h2><form method='post'><input name='mobile' placeholder='Mobile Number' required><input type='password' name='password' placeholder='Password' required><button class='btn'>🔓 Login</button></form><br><a href='/register' style='color:gray;text-decoration:none;'>নতুন অ্যাকাউন্ট খুলুন</a></div></body></html>")
 
-# হোম পেজ (Pagination: 30 movies)
+# --- 🏠 হোমপেজ ---
 @app.route('/')
 def home():
-    if 'user_id' not in session: return redirect(url_for('login'))
+    user = get_user()
+    if not user: return redirect('/login')
+    conf = get_conf()
+    
+    top_movies = list(movies_col.find().sort("views", -1).limit(10))
     page = request.args.get('page', 1, type=int)
-    limit = 30
-    skip = (page - 1) * limit
-    total = movies_col.count_documents({})
-    movies = movies_col.find().sort('_id', DESCENDING).skip(skip).limit(limit)
-    return render_template('index.html', movies=movies, page=page, total_pages=math.ceil(total/limit))
+    all_movies = list(movies_col.find().sort("_id", -1).skip((page-1)*30).limit(30))
+    total_pages = math.ceil(movies_col.count_documents({}) / 30)
+    
+    return render_template_string(f"""
+        <html><head><title>{conf['site_name']}</title>{STYLE}</head><body>
+            <header>💎 {conf['site_name']}</header>
+            <div class="notice-bar"><marquee>{conf['notice']}</marquee></div>
+            <div class="container">
+                <h3>👑 Top 10 Viewed Movies</h3>
+                <div class="slider">
+                    {{% for m in top_movies %}}
+                    <a href="/movie/{{{{m._id}}}}" class="slider-item">
+                        <span class="top-badge">⭐ TOP {{{{loop.index}}}}</span>
+                        <img src="{{{{m.poster}}}}">
+                    </a>
+                    {{% endfor %}}
+                </div>
+                <h3>🎬 All Movies</h3>
+                <div class="grid">
+                    {{% for m in all_movies %}}
+                    <a href="/movie/{{{{m._id}}}}" class="card">
+                        <img src="{{{{m.poster}}}}">
+                        <h3>{{{{m.name}}}}</h3>
+                    </a>
+                    {{% endfor %}}
+                </div>
+                <div style="text-align:center; margin-top:20px;">
+                    {{% if page > 1 %}}<a href="/?page={{{{page-1}}}}" class="btn" style="display:inline-block;width:80px;">Prev</a>{{% endif %}}
+                    {{% if page < total_pages %}}<a href="/?page={{{{page+1}}}}" class="btn" style="display:inline-block;width:80px;">Next</a>{{% endif %}}
+                </div>
+            </div>
+            {bot_nav('/')}
+        </body></html>
+    """, top_movies=top_movies, all_movies=all_movies, page=page, total_pages=total_pages)
 
-# মুভি ডিটেইলস (Income Logic Here)
+# --- 🎥 মুভি ডিটেইলস ---
 @app.route('/movie/<id>')
-def movie_details(id):
-    if 'user_id' not in session: return redirect(url_for('login'))
-    m = movies_col.find_one({"_id": ObjectId(id)})
-    c = settings_col.find_one({"type": "config"})
-    u = users_col.find_one({"_id": ObjectId(session['user_id'])})
-    # প্রিমিয়াম চেক
-    is_premium = u.get('premium_until') and u['premium_until'] > datetime.now()
-    return render_template('details.html', movie=m, config=c, is_premium=is_premium)
+def movie_detail(id):
+    user = get_user()
+    if not user: return redirect('/login')
+    movies_col.update_one({"_id": ObjectId(id)}, {"$inc": {"views": 1}})
+    movie = movies_col.find_one({"_id": ObjectId(id)})
+    premium = is_premium(user)
+    ad_tag = "<script src='//libtl.com/sdk.js' data-zone='10351894' data-sdk='show_10351894'></script>" if not premium else ""
 
-# টাস্ক ও প্রোফাইল
+    return render_template_string(f"""
+        <html><head>{STYLE}</head><body>
+            <div class="container" style="text-align:center;">
+                <img src="{{{{movie.poster}}}}" style="width:100%; border-radius:20px; max-width:400px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+                <h2 style="margin-top:20px;">{{{{movie.name}}}}</h2>
+                <p>📈 Views: {{{{movie.views}}}}</p>
+                <div style="margin-top:30px;">
+                    {{% for ep in movie.episodes %}}
+                        <div style="margin-bottom:15px;">
+                            {ad_tag}
+                            <a href="{{{{ep}}}}" class="btn">🚀 Watch Episode {{{{loop.index}}}}</a>
+                        </div>
+                    {{% endfor %}}
+                </div>
+                <br><a href="/" class="btn" style="background:#475569;">🔙 Back Home</a>
+            </div>
+        </body></html>
+    """, movie=movie)
+
+# --- 💰 টাস্ক ও কয়েন ---
 @app.route('/tasks')
 def tasks():
-    if 'user_id' not in session: return redirect(url_for('login'))
-    return render_template('tasks.html', tasks=tasks_col.find())
+    user = get_user()
+    if not user: return redirect('/login')
+    lt = list(link_tasks_col.find())
+    at = list(ad_tasks_col.find())
+    return render_template_string(f"""
+        <html><head>{STYLE}</head><body>
+            <div class="container">
+                <h2>🤑 Earn Unlimited Coins</h2>
+                <h4>🔗 Link Tasks</h4>
+                {{% for t in lt %}}
+                <div class="card" style="padding:15px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
+                    <span>{{{{t.name}}}} (💰{{{{t.coins}}}})</span>
+                    <a href="{{{{t.link}}}}" class="btn" style="width:auto; padding:5px 15px;" onclick="fetch('/claim/link/{{{{t._id}}}}')">Complete</a>
+                </div>
+                {{% endfor %}}
+                <h4>📺 Ad Tasks</h4>
+                {{% for t in at %}}
+                <div class="card" style="padding:15px; margin-bottom:10px;">
+                    <p>{{{{t.name}}}} (💰{{{{t.coins}}}})</p>
+                    <button class="btn" onclick="showAd('{{{{t.zone_id}}}}', '{{{{t._id}}}}')">📽 Watch Video Ad</button>
+                    <div id="ad-{{{{t._id}}}}"></div>
+                </div>
+                {{% endfor %}}
+            </div>
+            <script>
+                function showAd(z, i) {{
+                    document.getElementById('ad-'+i).innerHTML = `<script src='//libtl.com/sdk.js' data-zone='${{z}}' data-sdk='show_${{z}}'><\/script>`;
+                    fetch('/claim/ad/'+i);
+                }}
+            </script>
+            {bot_nav('/tasks')}
+        </body></html>
+    """, lt=lt, at=at)
 
-@app.route('/claim/<tid>')
-def claim(tid):
-    if 'user_id' not in session: return redirect(url_for('login'))
-    t = tasks_col.find_one({"_id": ObjectId(tid)})
-    if t:
-        users_col.update_one({"_id": ObjectId(session['user_id'])}, {"$inc": {"coins": t['coins']}})
-    return redirect(url_for('tasks'))
+@app.route('/claim/<type>/<tid>')
+def claim(type, tid):
+    user = get_user()
+    col = link_tasks_col if type == "link" else ad_tasks_col
+    t = col.find_one({"_id": ObjectId(tid)})
+    if t and user: users_col.update_one({"_id": user['_id']}, {"$inc": {"coins": int(t['coins'])}})
+    return "OK"
 
-@app.route('/premium')
-def premium():
-    if 'user_id' not in session: return redirect(url_for('login'))
-    u = users_col.find_one({"_id": ObjectId(session['user_id'])})
-    return render_template('premium.html', pkgs=packages_col.find(), user=u)
-
-@app.route('/buy/<pid>')
-def buy(pid):
-    p = packages_col.find_one({"_id": ObjectId(pid)})
-    u = users_col.find_one({"_id": ObjectId(session['user_id'])})
-    if u['coins'] >= p['price']:
-        expiry = datetime.now() + timedelta(days=p['days'])
-        users_col.update_one({"_id": u['_id']}, {"$inc": {"coins": -p['price']}, "$set": {"premium_until": expiry}})
-        return redirect(url_for('profile'))
-    return "Not enough coins!"
-
+# --- 👤 প্রোফাইল ---
 @app.route('/profile', methods=['GET', 'POST'])
 def profile():
-    if 'user_id' not in session: return redirect(url_for('login'))
-    u = users_col.find_one({"_id": ObjectId(session['user_id'])})
+    user = get_user()
+    if not user: return redirect('/login')
     if request.method == 'POST':
-        users_col.update_one({"_id": u['_id']}, {"$set": {"fname": request.form['fname'], "password": request.form['password']}})
-        return redirect(url_for('profile'))
-    return render_template('profile.html', user=u)
+        upd = {"fname": request.form.get('fname'), "lname": request.form.get('lname')}
+        if request.form.get('pass'): upd["password"] = generate_password_hash(request.form.get('pass'))
+        users_col.update_one({"_id": user['_id']}, {"$set": upd})
+        return redirect('/profile')
+    
+    status = "🌟 Premium" if is_premium(user) else "🆓 Free Member"
+    return render_template_string(f"""
+        <html><head>{STYLE}</head><body>
+            <div class="container">
+                <div class="card" style="text-align:center; padding:30px;">
+                    <h2 style="margin:0;">{{{{user.fname}}}} {{{{user.lname}}}}</h2>
+                    <p style="color:var(--primary); font-size:20px;">💰 Balance: {{{{user.coins}}}} Coins</p>
+                    <span style="background:green; padding:5px 12px; border-radius:8px;">{status}</span>
+                </div>
+                <form class="card" style="padding:20px; margin-top:20px;" method="post">
+                    <h3>🛠 Edit Profile</h3>
+                    <input name="fname" value="{{{{user.fname}}}}">
+                    <input name="lname" value="{{{{user.lname}}}}">
+                    <input type="password" name="pass" placeholder="নতুন পাসওয়ার্ড (ঐচ্ছিক)">
+                    <button class="btn">✅ Update Changes</button>
+                </form>
+                <a href="/logout" class="btn btn-red" style="margin-top:20px;">🚪 Logout</a>
+            </div>
+            {bot_nav('/profile')}
+        </body></html>
+    """, user=user)
+
+# --- 🛒 প্রিমিয়াম শপ ---
+@app.route('/buy-premium')
+def shop():
+    user = get_user()
+    if not user: return redirect('/login')
+    pkgs = list(packages_col.find())
+    return render_template_string(f"""
+        <html><head>{STYLE}</head><body>
+            <div class="container">
+                <h2>💎 Premium Store</h2>
+                <p>প্যাকেজ কিনলে মুভি বাটনে কোনো অ্যাড আসবে না!</p>
+                {{% for p in pkgs %}}
+                <div class="card" style="padding:20px; margin-bottom:15px; text-align:center; border: 2px solid gold;">
+                    <h2 style="color:gold;">{{{{p.name}}}}</h2>
+                    <p>⏳ মেয়াদ: {{{{p.days}}}} দিন</p>
+                    <p>💰 মূল্য: {{{{p.coins}}}} কয়েন</p>
+                    <a href="/purchase/{{{{p._id}}}}" class="btn">🔥 Buy Now</a>
+                </div>
+                {{% endfor %}}
+            </div>
+            {bot_nav('/buy-premium')}
+        </body></html>
+    """, pkgs=pkgs)
+
+@app.route('/purchase/<pid>')
+def purchase(pid):
+    user = get_user()
+    p = packages_col.find_one({"_id": ObjectId(pid)})
+    if user and p and user['coins'] >= int(p['coins']):
+        now = max(user.get('premium_until', datetime.utcnow()), datetime.utcnow())
+        expiry = now + timedelta(days=int(p['days']))
+        users_col.update_one({"_id": user['_id']}, {"$set": {"premium_until": expiry}, "$inc": {"coins": -int(p['coins'])}})
+        flash("🎉 Premium Activated!")
+    return redirect('/buy-premium')
+
+def bot_nav(active):
+    return f"""
+    <div class="bottom-nav">
+        <a href="/" class="{'active' if active=='/' else ''}">🏠 Home</a>
+        <a href="/tasks" class="{'active' if active=='/tasks' else ''}">💰 Earn</a>
+        <a href="/buy-premium" class="{'active' if active=='/buy-premium' else ''}">💎 Shop</a>
+        <a href="/profile" class="{'active' if active=='/profile' else ''}">👤 Me</a>
+    </div>
+    """
 
 @app.route('/logout')
-def logout():
-    session.clear()
-    return redirect(url_for('login'))
+def logout(): session.clear(); return redirect('/login')
 
-# ==========================================
-# [TEMPLATES UI] আপনার বলা মেনু ও ফিচারসহ
-# ==========================================
-def create_ui():
-    if not os.path.exists('templates'): os.makedirs('templates')
-    css = "<style>body{background:#0b0b0b;color:#fff;font-family:sans-serif;text-align:center;margin:0;padding-bottom:80px}.nav{background:#1a1a1a;position:fixed;bottom:0;width:100%;display:flex;justify-content:space-around;padding:15px;border-top:2px solid gold;z-index:99}.nav a{color:gold;text-decoration:none;font-size:12px;font-weight:bold}.card{background:#222;margin:10px;padding:10px;border-radius:10px;border:1px solid #333}.btn{display:block;background:gold;color:#000;padding:12px;margin:10px auto;text-decoration:none;border-radius:5px;width:85%;font-weight:bold}.inp{width:85%;padding:12px;margin:10px;border-radius:5px;border:none;background:#333;color:#fff}img{max-width:100%;border-radius:10px;margin-top:10px}</style>"
-    nav = '<div class="nav"><a href="/">হোম</a><a href="/tasks">টাস্ক</a><a href="/premium">প্রিমিয়াম</a><a href="/profile">প্রোফাইল</a></div>'
+# --- ⚡ এডমিন প্যানেল ---
+@app.route('/admin', methods=['GET', 'POST'])
+def admin():
+    if 'admin' not in session:
+        if request.method == 'POST' and request.form.get('p') == ADMIN_PASS:
+            session['admin'] = True; return redirect('/admin')
+        return "<html><body style='background:#0f172a;color:white;padding:50px;'><form method='post'><h2>🔑 Admin</h2><input type='password' name='p'><button class='btn'>Login</button></form></body></html>"
+    
+    conf = get_conf()
+    if request.method == 'POST':
+        action = request.form.get('a')
+        if action == "site": settings_col.update_one({"key": "config"}, {"$set": {"site_name": request.form.get('n'), "notice": request.form.get('nt')}})
+        elif action == "pkg": packages_col.insert_one({"name": request.form.get('n'), "days": request.form.get('d'), "coins": request.form.get('c')})
+        elif action == "link": link_tasks_col.insert_one({"name": request.form.get('n'), "link": request.form.get('l'), "coins": request.form.get('c')})
+        elif action == "ad": ad_tasks_col.insert_one({"name": request.form.get('n'), "zone_id": request.form.get('z'), "coins": request.form.get('c')})
+        elif action == "del_m": movies_col.delete_one({"_id": ObjectId(request.form.get('id'))})
+        elif action == "del_pkg": packages_col.delete_one({"_id": ObjectId(request.form.get('id'))})
+        elif action == "del_link": link_tasks_col.delete_one({"_id": ObjectId(request.form.get('id'))})
+        return redirect('/admin')
 
-    # Signup & Login
-    with open('templates/signup.html', 'w', encoding='utf-8') as f:
-        f.write(f'<html>{css}<body><h2>রেজিস্ট্রেশন</h2><form method="POST"><input name="fname" placeholder="First Name" class="inp" required><input name="lname" placeholder="Last Name" class="inp" required><input name="mobile" placeholder="Mobile" class="inp" required><input name="password" type="password" placeholder="Password" class="inp" required><button class="btn">Register</button></form><a href="/login" style="color:white">Login</a></body></html>')
-    with open('templates/login.html', 'w', encoding='utf-8') as f:
-        f.write(f'<html>{css}<body><h2>লগইন</h2><form method="POST"><input name="mobile" placeholder="Mobile" class="inp" required><input name="password" type="password" placeholder="Password" class="inp" required><button class="btn">Login</button></form><a href="/signup" style="color:white">Signup</a></body></html>')
+    return render_template_string(f"""
+        <html><head>{STYLE}</head><body style="padding:20px;">
+            <h2>🛠 Admin Panel</h2>
+            <div class="card" style="padding:15px;">
+                <h3>⚙️ Settings</h3>
+                <form method="post"><input type="hidden" name="a" value="site">
+                    Name: <input name="n" value="{conf['site_name']}">
+                    Notice: <input name="nt" value="{conf['notice']}">
+                    <button class="btn">Update</button>
+                </form>
+            </div>
+            <div class="card" style="padding:15px; margin-top:20px;">
+                <h3>📦 Add Package</h3>
+                <form method="post"><input type="hidden" name="a" value="pkg">
+                    <input name="n" placeholder="Package Name">
+                    <input name="d" placeholder="Days">
+                    <input name="c" placeholder="Price Coins">
+                    <button class="btn">Add Pkg</button>
+                </form>
+            </div>
+            <div class="card" style="padding:15px; margin-top:20px;">
+                <h3>🔗 Add Link Task</h3>
+                <form method="post"><input type="hidden" name="a" value="link">
+                    <input name="n" placeholder="Task Name">
+                    <input name="l" placeholder="Direct Link">
+                    <input name="c" placeholder="Reward Coins">
+                    <button class="btn">Add Link Task</button>
+                </form>
+            </div>
+            <div class="card" style="padding:15px; margin-top:20px;">
+                <h3>🗑 Delete Movies</h3>
+                {{% for m in movies %}}
+                <p>{{{{m.name}}}} <form method="post" style="display:inline;"><input type="hidden" name="a" value="del_m"><input type="hidden" name="id" value="{{{{m._id}}}}"><button style="color:red;">Del</button></form></p>
+                {{% endfor %}}
+            </div>
+        </body></html>
+    """, movies=list(movies_col.find()))
 
-    # Home with Pagination
-    with open('templates/index.html', 'w', encoding='utf-8') as f:
-        f.write(f'<html>{css}<body><h2>Movie Store</h2><div style="display:grid;grid-template-columns:1fr 1fr">{"{% for m in movies %}"}<div class="card"><img src="{"{{m.poster}}"}" loading="lazy"><p>{"{{m.name}}"}</p><a href="/movie/{"{{m._id|string}}"}" class="btn">Watch</a></div>{"{% endfor %}"}</div>' +
-                '<div>{"{% if page > 1 %}"}<a href="/?page={"{{page-1}}"}" style="color:white">Prev</a>{"{% endif %}"} Page {"{{page}}"} {"{% if page < total_pages %}"}<a href="/?page={"{{page+1}}"}" style="color:white">Next</a>{"{% endif %}"}</div>' + nav + '</body></html>')
+# --- 🤖 টেলিগ্রাম বট লজিক ---
+bot = Client("ProMovieBot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+st = {}
 
-    # Movie Details (The Income Logic Display)
-    with open('templates/details.html', 'w', encoding='utf-8') as f:
-        f.write(f'<html>{css}<body><img src="{"{{movie.poster}}"}"><h2>{"{{movie.name}}"}</h2>' +
-                '{"{% for ep in movie.episodes %}"}' +
-                '{"{% if is_premium %}"}<a href="https://t.me/share/url?url=FILE_ID_{{"{{ep.file_id}}"}}" class="btn">{"{{ep.name}}"} (Direct Link)</a>' +
-                '{"{% else %}"}<a href="{{"{{config.ad_link}}"}}?id={{"{{config.terazone_id}}"}}&file={{"{{ep.file_id}}"}}" class="btn">{"{{ep.name}}"} (Watch Ad to Unlock)</a>{"{% endif %}"}' +
-                '{"{% endfor %}"}' + nav + '</body></html>')
+@bot.on_message(filters.command("movie") & filters.user(ADMIN_ID))
+async def add_m(c, m):
+    st[m.from_user.id] = {"step": "name", "eps": []}
+    await m.reply_text("🎬 মুভির নাম দিন:")
 
-    # Tasks View (Direct & Monetag)
-    with open('templates/tasks.html', 'w', encoding='utf-8') as f:
-        f.write(f'<html>{css}<body><h2>Earn Coins</h2>{"{% for t in tasks %}"}<div class="card"><h4>{"{{t.title}}"}</h4>' +
-                '{"{% if t.type == \'direct\' %}"}<a href="{{"{{t.content}}"}}" target="_blank" onclick="location.href=\'/claim/{{"{{t._id|string}}"}}\'" class="btn">Complete Task ({"{{t.coins}}"} Coins)</a>' +
-                '{"{% else %}"}<button onclick="eval(\'{{"{{t.content}}"}}\'); location.href=\'/claim/{{"{{t._id|string}}"}}\'" class="btn">Watch Ad ({"{{t.coins}}"} Coins)</button>{"{% endif %}"}</div>{"{% endfor %}"}' + nav + '</body></html>')
+@bot.on_message(filters.text & filters.user(ADMIN_ID))
+async def handle_m(c, m):
+    uid = m.from_user.id
+    if uid not in st: return
+    if st[uid]["step"] == "name":
+        st[uid]["name"] = m.text; st[uid]["step"] = "poster"
+        await m.reply_text("🖼 পোস্টার URL দিন:")
+    elif st[uid]["step"] == "poster":
+        st[uid]["poster"] = m.text; st[uid]["step"] = "eps"
+        await m.reply_text("🔗 এপিসোড লিঙ্ক দিন (একটা একটা করে)। শেষ হলে Done দিন।", 
+                           reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Done ✅", callback_data="save")]]))
+    elif st[uid]["step"] == "eps":
+        st[uid]["eps"].append(m.text)
+        await m.reply_text(f"✅ এপিসোড {len(st[uid]['eps'])} যুক্ত হয়েছে।")
 
-    # Profile & Premium
-    with open('templates/profile.html', 'w', encoding='utf-8') as f:
-        f.write(f'<html>{css}<body><h2>My Profile</h2><div class="card"><p>Name: {"{{user.fname}}"} {"{{user.lname}}"}</p><p>Mobile: {"{{user.mobile}}"}</p><p>Coins: {"{{user.coins}}"}</p>' +
-                '<form method="POST"><input name="fname" value="{"{{user.fname}}"}" class="inp"><input name="password" value="{"{{user.password}}"}" class="inp"><button class="btn">Update Info</button></form><a href="/logout" style="color:red">Logout</a></div>' + nav + '</body></html>')
-    with open('templates/premium.html', 'w', encoding='utf-8') as f:
-        f.write(f'<html>{css}<body><h2>Premium Packages</h2><p>Balance: {"{{user.coins}}"} Coins</p>{"{% for p in pkgs %}"}<div class="card"><h4>{"{{p.name}}"}</h4><p>{"{{p.days}}"} Days - {"{{p.price}}"} Coins</p><a href="/buy/{"{{p._id|string}}"}" class="btn">Buy Package</a></div>{"{% endfor %}"}' + nav + '</body></html>')
+@bot.on_callback_query(filters.regex("save"))
+async def save_m(c, q):
+    uid = q.from_user.id
+    d = st.get(uid)
+    if d:
+        movies_col.insert_one({"name": d["name"], "poster": d["poster"], "episodes": d["eps"], "views": 0})
+        await q.message.edit_text("🚀 মুভিটি সফলভাবে লাইভ হয়েছে!")
+        del st[uid]
 
-if __name__ == '__main__':
-    create_ui()
-    # ভার্সেল এ app.run() কাজ করবে, কিন্তু bot.polling দেওয়া যাবে না। Webhook ই একমাত্র ভরসা।
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+if __name__ == "__main__":
+    threading.Thread(target=lambda: bot.run()).start()
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
