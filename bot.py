@@ -12,7 +12,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 # --- ⚙️ কনফিগারেশন ---
 API_ID = int(os.getenv("API_ID", "29904834"))
 API_HASH = os.getenv("API_HASH", "8b4fd9ef578af114502feeafa2d31938")
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8655043839:AAGmoyWwzJFAi9hOovKNeySOp6UzrHBPibQ")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8655043839:AAFSI7Tqk6bftnVNqtBB-kRdbFDmr8b3Lf0")
 MONGO_URL = os.getenv("MONGO_URL", "mongodb+srv://drama:drama@cluster0.sa4kvgu.mongodb.net/?appName=Cluster0")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "7120801813"))
 ADMIN_PASS = os.getenv("ADMIN_PASS", "admin123")
