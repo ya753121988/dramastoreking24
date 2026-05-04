@@ -343,7 +343,6 @@ def render_full_page(body_html, **kwargs):
     if 'user_id' in session:
         user_data = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
     
-    # FIX: Use string concatenation instead of f-string for HTML to avoid Jinja bracket conflict
     full_html = """
     <!DOCTYPE html>
     <html lang="bn">
@@ -369,7 +368,7 @@ def render_full_page(body_html, **kwargs):
 
         {% if user_data %}
         <div class="user-stats-bar">
-            <span><i class="fas fa-wallet" style="color:gold;"></i> ব্যালেন্স: <b>{{ user_data.get('coins', 0) }}</b> কয়েন</span>
+            <span><i class="fas fa-wallet" style="color:gold;"></i> ব্যালেন্স: <b>{{ user_data.get('coins', 0) }}</b> কয়েন</span>
             {% if user_data.get('premium_until') and user_data.get('premium_until') > now %}
             <span style="color:gold; font-weight:bold;"><i class="fas fa-crown"></i> প্রিমিয়াম</span>
             {% else %}
@@ -464,18 +463,18 @@ def index():
 @app.route('/tasks')
 def tasks():
     if 'user_id' not in session: return redirect('/login')
-    tasks = list(mongo.db.tasks.find())
+    tasks_list = list(mongo.db.tasks.find())
     
     user = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
     completed = user.get('completed_tasks', [])
 
     content = """
     <div class="section-title">কয়েন ইনকাম করুন <i class="fas fa-coins" style="color:gold;"></i></div>
-    {% for t in tasks %}
+    {% for t in tasks_list %}
     <div class="task-card">
         <div class="task-info">
             <h4>{{ t.title }}</h4>
-            <p>+{{ t.reward }} কয়েন</p>
+            <p>+{{ t.reward }} কয়েন</p>
         </div>
         {% if t._id|string in completed %}
             <span style="color:var(--gray); font-weight:bold;">সম্পন্ন</span>
@@ -489,6 +488,7 @@ def tasks():
     </div>
     {% endfor %}
 
+    <!-- Monetag Script Holder -->
     <div id="ad-container"></div>
 
     <script>
@@ -501,6 +501,7 @@ def tasks():
                     div.innerHTML = data.script;
                     document.body.appendChild(div);
                     
+                    // এখানে একটি ফেক ডিলে দিয়ে কয়েন অ্যাড করা হচ্ছে
                     setTimeout(() => {
                         claimReward(taskId);
                     }, 5000);
@@ -513,14 +514,14 @@ def tasks():
             .then(res => res.json())
             .then(data => {
                 if(data.success) {
-                    alert('অভিনন্দন! ১০ কয়েন আপনার ব্যালেন্সে যোগ হয়েছে।');
+                    alert('অভিনন্দন! ১০ কয়েন আপনার ব্যালেন্সে যোগ হয়েছে।');
                     location.reload();
                 }
             });
         }
     </script>
     """
-    return render_full_page(content, tasks=tasks, completed=completed)
+    return render_full_page(content, tasks_list=tasks_list, completed=completed)
 
 @app.route('/get-task-script/<tid>')
 def get_task_script(tid):
@@ -562,7 +563,7 @@ def buy_premium():
     <div class="task-card">
         <div class="task-info">
             <h4>{{ o.days }} দিনের প্রিমিয়াম</h4>
-            <p>{{ o.price }} কয়েন</p>
+            <p>{{ o.price }} কয়েন</p>
         </div>
         <a href="/purchase-premium/{{ o._id }}" class="task-btn" style="background:gold; color:black;" onclick="return confirm('আপনি কি নিশ্চিত?')">কিনুন</a>
     </div>
@@ -580,6 +581,7 @@ def purchase_premium(oid):
         days = int(offer['days'])
         now = datetime.datetime.now()
         
+        # বর্তমান প্রিমিয়ামের সাথে যোগ করা
         current_expiry = user.get('premium_until')
         if current_expiry and current_expiry > now:
             new_expiry = current_expiry + datetime.timedelta(days=days)
@@ -592,7 +594,7 @@ def purchase_premium(oid):
         })
         flash(f"সফলভাবে {days} দিনের প্রিমিয়াম কেনা হয়েছে!")
     else:
-        flash("আপনার পর্যাপ্ত কয়েন নেই!")
+        flash("আপনার পর্যাপ্ত কয়েন নেই!")
     return redirect('/profile')
 
 @app.route('/search')
@@ -614,7 +616,7 @@ def search():
             </div>
         </div>
         {% else %}
-        <p style="text-align:center; grid-column: 1/-1; padding: 50px; color: var(--gray);">দুঃখিত, আপনার সার্চ করা মুভিটি পাওয়া যায়নি।</p>
+        <p style="text-align:center; grid-column: 1/-1; padding: 50px; color: var(--gray);">দুঃখিত, আপনার সার্চ করা মুভিটি পাওয়া যায়নি।</p>
         {% endfor %}
     </div>
     """
@@ -631,10 +633,10 @@ def movie_detail(m_id):
     )
     if not movie: return redirect('/')
     
+    # ইউজার প্রিমিয়াম কিনা চেক
     user = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
     is_premium = user.get('premium_until') and user['premium_until'] > datetime.datetime.now()
 
-    # FIX: Concatenation to avoid Jinja/Python brace collision
     content = """
     <div class="back-btn-container">
         <a href="/" onclick="showLoader();" class="back-btn"><i class="fas fa-arrow-left"></i> ব্যাক টু হোম</a>
@@ -649,7 +651,7 @@ def movie_detail(m_id):
         </div>
         
         <div class="card" style="max-width:100%; text-align:left; border-top:4px solid var(--primary);">
-            <h4 style="margin-bottom:20px; border-bottom:1px solid #333; padding-bottom:10px;">ডাউনলোড এবং ওয়াচ লিঙ্ক:</h4>
+            <h4 style="margin-bottom:20px; border-bottom:1px solid #333; padding-bottom:10px;">ডাউনলোড এবং ওয়াচ লিঙ্ক:</h4>
             <div class="episode-list">
                 {% for msg_id in movie.episodes %}
                 <div class="ep-button" onclick="processAd('{{ msg_id }}_idx_{{ loop.index0 }}', '{{ msg_id }}')">
@@ -664,13 +666,14 @@ def movie_detail(m_id):
         </div>
     </div>
 
+    <!-- Monetag Integration -->
     <script src='//libtl.com/sdk.js' data-zone='{{ settings.monetag_id }}' data-sdk='show_{{ settings.monetag_id }}'></script>
     
     <script>
         const AD_LIMIT = {{ settings.ad_limit }};
         const LOCK_MINUTES = {{ settings.lock_duration }};
         const IS_PREMIUM = {{ 'true' if is_premium else 'false' }};
-        const BOT_USERNAME = '""" + BOT_USERNAME + """';
+        const BOT_NAME = '""" + BOT_USERNAME + """';
 
         function updateStatus(uniqueId) {
             if(IS_PREMIUM) {
@@ -708,7 +711,7 @@ def movie_detail(m_id):
         function processAd(uniqueId, fileId) {
             if(IS_PREMIUM) {
                 showLoader();
-                window.location.href = "https://t.me/" + BOT_USERNAME + "?start=file_" + fileId;
+                window.location.href = "https://t.me/" + BOT_NAME + "?start=file_" + fileId;
                 return;
             }
 
@@ -717,7 +720,7 @@ def movie_detail(m_id):
 
             if (data.unlocked_at > 0) {
                 showLoader();
-                window.location.href = "https://t.me/" + BOT_USERNAME + "?start=file_" + fileId;
+                window.location.href = "https://t.me/" + BOT_NAME + "?start=file_" + fileId;
                 return;
             }
 
@@ -733,7 +736,7 @@ def movie_detail(m_id):
                 localStorage.setItem('ad_data_' + uniqueId, JSON.stringify(data));
                 updateStatus(uniqueId);
                 showLoader();
-                window.location.href = "https://t.me/" + BOT_USERNAME + "?start=file_" + fileId;
+                window.location.href = "https://t.me/" + BOT_NAME + "?start=file_" + fileId;
             }
         }
     </script>
@@ -746,7 +749,7 @@ def admin():
         flash("আপনার এডমিন অ্যাক্সেস নেই!")
         return redirect('/')
     
-    # FIX: MUST fetch settings here to use it in the template call below
+    # settings fetch করা হয়েছে যা আগে মিসিং ছিল
     settings = get_site_settings()
     
     search_q = request.args.get('search_movie', '')
@@ -830,13 +833,13 @@ def admin():
         <form method="POST">
             <input type="hidden" name="action" value="add_offer">
             <input name="days" placeholder="কত দিন (উদা: 30)" required>
-            <input name="price" placeholder="কত কয়েন (উদা: 100)" required>
+            <input name="price" placeholder="কত কয়েন (উদা: 100)" required>
             <button class="btn" type="submit">অফার সেভ করুন</button>
         </form>
         <div style="margin-top:20px;">
             {% for o in current_offers %}
             <div class="manage-item">
-                <span>{{ o.days }} দিন - {{ o.price }} কয়েন</span>
+                <span>{{ o.days }} দিন - {{ o.price }} কয়েন</span>
                 <form method="POST" style="margin:0;">
                     <input type="hidden" name="action" value="del_offer">
                     <input type="hidden" name="oid" value="{{ o._id }}">
@@ -957,7 +960,6 @@ def login():
 def profile():
     if 'user_id' not in session: return redirect('/login')
     u = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
-    # FIX: Regular string for Jinja
     html = """
     <div class="card" style="text-align:center;">
         <div style="width:100px; height:100px; background:var(--primary); border-radius:50%; margin:auto; display:flex; justify-content:center; align-items:center; font-size:40px; margin-bottom:20px;">
@@ -998,13 +1000,13 @@ def handle_bot_start(m):
                 ep_index = movie['episodes'].index(msg_id) + 1
             
             movie_name = movie['title'] if movie else "Unknown Movie"
-            caption = f"🎬 {movie_name}\n🎞 Episode: {ep_index:02d}\n\nধন্যবাদ ড্রামা স্টোর কিং এর সাথে থাকার জন্য।"
+            caption = f"🎬 {movie_name}\\n🎞 Episode: {ep_index:02d}\\n\\nধন্যবাদ ড্রামা স্টোর কিং এর সাথে থাকার জন্য।"
             
             protect = True if settings.get('protect_content') == "Yes" else False
             
             sent_msg = bot.copy_message(m.chat.id, channel_id, msg_id, caption=caption, protect_content=protect)
             
-            bot.send_message(m.chat.id, f"✅ ফাইলটি উপরে দেওয়া হয়েছে।\n⚠️ এটি {settings.get('auto_delete_time')} মিনিট পর অটো ডিলিট হয়ে যাবে।")
+            bot.send_message(m.chat.id, f"✅ ফাইলটি উপরে দেওয়া হয়েছে।\\n⚠️ এটি {settings.get('auto_delete_time')} মিনিট পর অটো ডিলিট হয়ে যাবে।")
             
             threading.Thread(target=delete_msg, args=(m.chat.id, sent_msg.message_id, int(settings.get('auto_delete_time', 5)))).start()
 
