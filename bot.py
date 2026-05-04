@@ -337,14 +337,18 @@ def get_site_settings():
 # --- মাস্টার টেমপ্লেট মেকার ---
 def render_full_page(body_html, **kwargs):
     settings = get_site_settings()
-    current_path = request.path
+    
+    # ফিক্স: kwargs এর ভেতর settings থাকলে তা সরিয়ে ফেলা হচ্ছে যেন render_template_string এ ডুপ্লিকেট না হয়
+    kwargs.pop('settings', None)
     
     # ইউজার ব্যালেন্স ও প্রিমিয়াম চেক
     user_data = None
     if 'user_id' in session:
-        user_data = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
+        try:
+            user_data = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
+        except:
+            pass
     
-    # Internal Server Error এড়াতে f-string এর পরিবর্তে Concatenation ব্যবহার করা হয়েছে
     template_start = """
     <!DOCTYPE html>
     <html lang="bn">
@@ -493,9 +497,6 @@ def tasks():
     </div>
     {% endfor %}
 
-    <!-- Monetag Script Holder -->
-    <div id="ad-container"></div>
-
     <script>
         function runMonetag(taskId) {
             fetch('/get-task-script/' + taskId)
@@ -505,8 +506,6 @@ def tasks():
                     const div = document.createElement('div');
                     div.innerHTML = data.script;
                     document.body.appendChild(div);
-                    
-                    // এখানে একটি ফেক ডিলে দিয়ে কয়েন অ্যাড করা হচ্ছে
                     setTimeout(() => {
                         claimReward(taskId);
                     }, 5000);
@@ -601,8 +600,6 @@ def purchase_premium(oid):
         flash("আপনার পর্যাপ্ত কয়েন নেই!")
     return redirect('/profile')
 
-# --- আগের সব রাউটস অক্ষুণ্ণ রাখা হয়েছে ---
-
 @app.route('/search')
 def search():
     if 'user_id' not in session: return redirect(url_for('login'))
@@ -639,7 +636,6 @@ def movie_detail(m_id):
     )
     if not movie: return redirect('/')
     
-    # ইউজার প্রিমিয়াম কিনা চেক
     user = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
     is_premium = user.get('premium_until') and user['premium_until'] > datetime.datetime.now()
 
