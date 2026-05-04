@@ -16,9 +16,9 @@ BOT_USERNAME = "dramastorkingsbot"
 MONGO_URI = "mongodb+srv://drama:drama@cluster0.sa4kvgu.mongodb.net/DramaStoreDB?retryWrites=true&w=majority&appName=Cluster0"
 BASE_URL = "https://indirect-meris-yeasinvai-95120fc6.koyeb.app" 
 
-# --- নতুন যুক্ত করা কনফিগারেশন ---
-API_ID = "29904834" # আপনার এপিআই আইডি এখানে দিন
-API_HASH = "8b4fd9ef578af114502feeafa2d31938" # আপনার এপিআই হ্যাশ এখানে দিন
+# --- নতুন যুক্ত করা সিকিউরিটি এবং এপিআই ইনফো ---
+API_ID = "29904834" 
+API_HASH = "8b4fd9ef578af114502feeafa2d31938" 
 OWNER_ID = 7120801813 # এখানে আপনার টেলিগ্রাম আইডি (শুধু আপনিই মুভি এড করতে পারবেন)
 
 app = Flask(__name__)
@@ -372,7 +372,7 @@ FULL_CSS = """
 </script>
 """
 
-# --- ডাটাবেজ এবং সেটিিংস হেল্পার ---
+# --- ডাটাবেজ এবং সেটিংস হেল্পার ---
 def get_site_settings():
     try:
         s = mongo.db.settings.find_one({"type": "config"})
@@ -382,7 +382,7 @@ def get_site_settings():
                 "monetag_id": "10351894", "ad_limit": 2, 
                 "lock_duration": 30, "file_channel": "",
                 "auto_delete_time": 5, "protect_content": "No",
-                "notification_channel": "" # নতুন ঘর যুক্ত করা হয়েছে
+                "notification_channel": "" # নতুন ঘর
             }
             mongo.db.settings.insert_one({"type": "config", **default})
             return default
@@ -393,7 +393,6 @@ def get_site_settings():
 # --- মাস্টার টেমপ্লেট মেকার ---
 def render_full_page(body_html, **kwargs):
     settings = get_site_settings()
-    # এখানে ডুপ্লিকেট আর্গুমেন্ট রিমুভ করা হয়েছে যাতে প্রোফাইল ইন্টারনাল এরর না আসে
     kwargs.pop('settings', None)
     kwargs.pop('expiry_ts', None)
     
@@ -915,7 +914,7 @@ def admin():
                 "file_channel": request.form.get('file_channel'),
                 "auto_delete_time": int(request.form.get('auto_delete_time')),
                 "protect_content": request.form.get('protect_content'),
-                "notification_channel": request.form.get('notification_channel') # আপডেট লজিক
+                "notification_channel": request.form.get('notification_channel') # কিউ নাম ফিক্সড
             }}, upsert=True)
             flash("বিজ্ঞাপন ও স্টোরেজ সেটিংস আপডেট হয়েছে!")
         elif action == 'delete_movie':
@@ -1144,7 +1143,6 @@ def logout():
 
 # --- টেলিগ্রাম বট হ্যান্ডলার ---
 
-# নতুন সিকিউরিটি এবং এপিআই কনফিগারেশন
 API_ID = "29904834" 
 API_HASH = "8b4fd9ef578af114502feeafa2d31938" 
 OWNER_ID = 7120801813 
@@ -1168,31 +1166,31 @@ def handle_bot_start(m):
                 ep_index = movie['episodes'].index(msg_id) + 1
             
             movie_name = movie['title'] if movie else "Unknown Movie"
-            caption = f"🎬 {movie_name}\\n🎞 Episode: {ep_index:02d}\\n\\nধন্যবাদ ড্রামা স্টোর কিং এর সাথে থাকার জন্য।"
+            caption = f"🎬 {movie_name}\n🎞 Episode: {ep_index:02d}\n\nধন্যবাদ ড্রামা স্টোর কিং এর সাথে থাকার জন্য।"
             
             protect = True if settings.get('protect_content') == "Yes" else False
             
             sent_msg = bot.copy_message(m.chat.id, channel_id, msg_id, caption=caption, protect_content=protect)
             
-            bot.send_message(m.chat.id, f"✅ ফাইলটি উপরে দেওয়া হয়েছে।\\n⚠️ এটি {settings.get('auto_delete_time')} মিনিট পর অটো ডিলিট হয়ে যাবে।")
+            bot.send_message(m.chat.id, f"✅ ফাইলটি উপরে দেওয়া হয়েছে।\n⚠️ এটি {settings.get('auto_delete_time')} মিনিট পর অটো ডিলিট হয়ে যাবে।")
             
             threading.Thread(target=delete_msg, args=(m.chat.id, sent_msg.message_id, int(settings.get('auto_delete_time', 5)))).start()
 
         except Exception as e:
             bot.reply_to(m, "❌ ফাইলটি পাওয়া যায়নি।")
     else:
-        # স্টার্ট বাটনে ইউজার ইনফো এবং ওয়েবসাইট বাটন যুক্ত করা হলো
+        # স্টার্ট বাটনে ইউজার তথ্য এবং ওয়েবসাইট বাটন
         markup = telebot.types.InlineKeyboardMarkup()
         markup.add(telebot.types.InlineKeyboardButton("🌐 Visit Website", url=BASE_URL))
         
-        user_info = f"👤 প্রোফাইল তথ্য:\\n📝 নাম: {m.from_user.first_name} {m.from_user.last_name or ''}\\n🆔 আইডি: {m.from_user.id}\\n🔗 ইউজারনেম: @{m.from_user.username or 'N/A'}\\n\\nস্বাগতম! মুভি দেখতে ওয়েবসাইট ভিজিট করুন।"
-        bot.reply_to(m, user_info, reply_markup=markup)
+        info = f"👤 প্রোফাইল তথ্য:\n📝 নাম: {m.from_user.first_name} {m.from_user.last_name or ''}\n🆔 আইডি: {m.from_user.id}\n🔗 ইউজারনেম: @{m.from_user.username or 'N/A'}\n\nস্বাগতম! মুভি দেখতে ওয়েবসাইট ভিজিট করুন।"
+        bot.reply_to(m, info, reply_markup=markup)
 
 @bot.message_handler(commands=['movie'])
 def start_adding_movie(m):
-    # শুধুমাত্র ওনার মুভি এড করতে পারবে
-    if m.from_user.id != OWNER_ID:
-        bot.reply_to(m, "❌ আপনি এই কমান্ডটি ব্যবহার করার অনুমতিপ্রাপ্ত নন।")
+    # স্ট্রিক্ট সিকিউরিটি চেক
+    if int(m.from_user.id) != int(OWNER_ID):
+        bot.reply_to(m, "❌ আপনি ওনার নন!")
         return
     try:
         parts = m.text.split('/movie ')[1].split(',')
@@ -1206,7 +1204,7 @@ def start_adding_movie(m):
 def handle_bot_inputs(m):
     cid = m.chat.id
     if cid not in user_states: return
-    if m.from_user.id != OWNER_ID: return # সিকিউরিটি চেক
+    if int(m.from_user.id) != int(OWNER_ID): return 
     
     state = user_states[cid]
     settings = get_site_settings()
@@ -1230,13 +1228,13 @@ def handle_bot_inputs(m):
             res = mongo.db.movies.insert_one(user_states[cid])
             movie_id = str(res.inserted_id)
             
-            # নোটিফিকেশন চ্যানেলে পাঠানো (নতুন ফিচার)
+            # নোটিফিকেশন চ্যানেলে পাঠানো (কিউ নাম ফিক্সড)
             notif_ch = settings.get('notification_channel')
             if notif_ch:
                 try:
                     markup = telebot.types.InlineKeyboardMarkup()
                     markup.add(telebot.types.InlineKeyboardButton("👁 Watch Movie", url=f"{BASE_URL}/movie/{movie_id}"))
-                    msg = f"🔥 নতুন মুভি আপলোড হয়েছে!\\n\\n🎬 নাম: {state['title']}\\n📁 ক্যাটাগরি: {state['category']}\\n🎞 এপিসোড সংখ্যা: {len(state['episodes'])}\\n\\nনিচের বাটনে ক্লিক করে মুভিটি দেখুন।"
+                    msg = f"🔥 নতুন মুভি আপলোড হয়েছে!\n\n🎬 নাম: {state['title']}\n📁 ক্যাটাগরি: {state['category']}\n🎞 এপিসোড সংখ্যা: {len(state['episodes'])}\n\nনিচের বাটনে ক্লিক করে মুভিটি দেখুন।"
                     bot.send_photo(notif_ch, state['poster'], caption=msg, reply_markup=markup)
                 except:
                     pass
