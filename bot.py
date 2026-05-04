@@ -425,7 +425,7 @@ def movie_detail(m_id):
 
             if (data.unlocked_at > 0) {{
                 showLoader();
-                window.location.href = "https://t.me/" + "{BOT_USERNAME}" + "?start=" + fileId;
+                window.location.href = "https://t.me/" + "{BOT_USERNAME}" + "?start=file_" + fileId;
                 return;
             }}
 
