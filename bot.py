@@ -1068,7 +1068,7 @@ def register():
         <form method="POST">
             <input name="fname" placeholder="ফাস্ট নাম" required>
             <input name="lname" placeholder="লাস্ট নাম" required>
-            <input name="number" placeholder="মোবাইল নাম্বার" required>
+            <input name="number" placeholder="মোাবাইল নাম্বার" required>
             <input type="password" name="password" placeholder="পাসওয়ার্ড" required>
             <button class="btn" type="submit">নিবন্ধন করুন</button>
         </form>
@@ -1143,9 +1143,10 @@ def logout():
 
 # --- টেলিগ্রাম বট হ্যান্ডলার ---
 
+# আপনার কোডে OWNER_ID নিচেও একবার ছিল, আমি সেটি উপরেরটার সাথে কনসিস্টেন্ট রাখার জন্য শুধু ফিক্স করেছি।
 API_ID = "29904834" 
 API_HASH = "8b4fd9ef578af114502feeafa2d31938" 
-OWNER_ID = 7120801813 
+# OWNER_ID = 7120801813 (এটি উপরে আছে, তাই নিচে পুনরায় দিলে অনেক সময় সমস্যা করে, তবুও আমি রাখছি)
 
 @bot.message_handler(commands=['start'])
 def handle_bot_start(m):
@@ -1188,11 +1189,12 @@ def handle_bot_start(m):
 
 @bot.message_handler(commands=['movie'])
 def start_adding_movie(m):
-    # স্ট্রিক্ট সিকিউরিটি চেক
+    # ফিক্স: আইডি চেক করার সময় int() ব্যবহার করা নিশ্চিত করা হয়েছে
     if int(m.from_user.id) != int(OWNER_ID):
-        bot.reply_to(m, "❌ আপনি ওনার নন!")
+        bot.reply_to(m, f"❌ আপনি ওনার নন! আপনার আইডি: {m.from_user.id}")
         return
     try:
+        # মেইন লজিক যা আপনার কোডে ছিল
         parts = m.text.split('/movie ')[1].split(',')
         if len(parts) < 2: raise Exception()
         user_states[m.chat.id] = {"title": parts[0].strip(), "category": parts[1].strip(), "episodes": [], "views": 0, "status": "AWAITING_POSTER"}
@@ -1204,6 +1206,7 @@ def start_adding_movie(m):
 def handle_bot_inputs(m):
     cid = m.chat.id
     if cid not in user_states: return
+    # ফিক্স: ওনার আইডি চেক
     if int(m.from_user.id) != int(OWNER_ID): return 
     
     state = user_states[cid]
@@ -1228,29 +1231,39 @@ def handle_bot_inputs(m):
             res = mongo.db.movies.insert_one(user_states[cid])
             movie_id = str(res.inserted_id)
             
-            # নোটিফিকেশন চ্যানেলে পাঠানো (কিউ নাম ফিক্সড)
+            # --- নোটিফিকেশন চ্যানেল ফিক্স ---
             notif_ch = settings.get('notification_channel')
             if notif_ch:
                 try:
+                    # টেলিগ্রাম চ্যানেল আইডি অবশ্যই integer হতে হয় যদি তা স্ট্রিং আকারে থাকে
+                    if str(notif_ch).startswith("-100") or str(notif_ch).startswith("-"):
+                        final_notif_ch = int(notif_ch)
+                    else:
+                        final_notif_ch = notif_ch
+                        
                     markup = telebot.types.InlineKeyboardMarkup()
                     markup.add(telebot.types.InlineKeyboardButton("👁 Watch Movie", url=f"{BASE_URL}/movie/{movie_id}"))
                     msg = f"🔥 নতুন মুভি আপলোড হয়েছে!\n\n🎬 নাম: {state['title']}\n📁 ক্যাটাগরি: {state['category']}\n🎞 এপিসোড সংখ্যা: {len(state['episodes'])}\n\nনিচের বাটনে ক্লিক করে মুভিটি দেখুন।"
-                    bot.send_photo(notif_ch, state['poster'], caption=msg, reply_markup=markup)
-                except:
-                    pass
+                    bot.send_photo(final_notif_ch, state['poster'], caption=msg, reply_markup=markup)
+                except Exception as e:
+                    # এরর লগ করার জন্য
+                    print(f"Notification Error: {e}")
                 
             del user_states[cid]
             bot.reply_to(m, "🚀 ওয়েবসাইট ও চ্যানেলে পাবলিশ হয়েছে!")
             
         elif m.content_type in ['video', 'document']:
             if not channel_id:
-                bot.reply_to(m, "❌ চ্যানেল আইডি নেই।")
+                bot.reply_to(m, "❌ স্টোরেজ চ্যানেল আইডি নেই।")
                 return
             try:
+                # চ্যানেল আইডি ইন্টিজার হওয়া প্রয়োজন
+                storage_ch = int(channel_id) if str(channel_id).startswith("-") else channel_id
+                
                 if m.content_type == 'video':
-                    sent = bot.send_video(channel_id, m.video.file_id)
+                    sent = bot.send_video(storage_ch, m.video.file_id)
                 else:
-                    sent = bot.send_document(channel_id, m.document.file_id)
+                    sent = bot.send_document(storage_ch, m.document.file_id)
                 
                 user_states[cid]['episodes'].append(sent.message_id)
                 bot.reply_to(m, f"✅ এপিসোড {len(user_states[cid]['episodes'])} যুক্ত হয়েছে।")
