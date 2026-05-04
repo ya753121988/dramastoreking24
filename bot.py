@@ -389,13 +389,15 @@ def render_full_page(body_html, **kwargs):
     settings = get_site_settings()
     kwargs.pop('settings', None)
     
-    user_data = None
+    user_data = {}  # ডিফল্ট খালি ডিকশনারি
     expiry_ts = 0
     if 'user_id' in session:
         try:
-            user_data = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
-            if user_data and user_data.get('premium_until'):
-                expiry_ts = int(user_data['premium_until'].timestamp() * 1000)
+            u_doc = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
+            if u_doc:
+                user_data = u_doc
+                if user_data.get('premium_until'):
+                    expiry_ts = int(user_data['premium_until'].timestamp() * 1000)
         except:
             pass
     
@@ -424,7 +426,7 @@ def render_full_page(body_html, **kwargs):
             {% endif %}
         </div>
 
-        {% if user_data %}
+        {% if user_data and user_data.get('_id') %}
         <div class="user-stats-bar">
             <div style="display:flex; justify-content:space-between; width:100%;">
                 <span><i class="fas fa-wallet" style="color:gold;"></i> ব্যালেন্স: <b>{{ user_data.get('coins', 0) }}</b> কয়েন</span>
@@ -535,6 +537,7 @@ def tasks():
     tasks_list = list(mongo.db.tasks.find())
     
     user = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
+    if not user: return redirect('/logout')
     
     today = datetime.datetime.now().strftime("%Y-%m-%d")
     daily_stats = user.get('daily_stats', {"date": today, "counts": {}})
@@ -1059,7 +1062,7 @@ def register():
         <form method="POST">
             <input name="fname" placeholder="ফাস্ট নাম" required>
             <input name="lname" placeholder="লাস্ট নাম" required>
-            <input name="number" placeholder="মোবাইল নাম্বার" required>
+            <input name="number" placeholder="মোাবাইল নাম্বার" required>
             <input type="password" name="password" placeholder="পাসওয়ার্ড" required>
             <button class="btn" type="submit">নিবন্ধন করুন</button>
         </form>
@@ -1095,7 +1098,13 @@ def login():
 @app.route('/profile')
 def profile():
     if 'user_id' not in session: return redirect('/login')
+    
+    # এরর হ্যান্ডলিং যোগ করা হয়েছে প্রোফাইল ক্রাশ রোধ করতে
     u = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
+    if not u:
+        session.clear()
+        return redirect('/login')
+        
     expiry_ts = 0
     if u.get('premium_until'):
         expiry_ts = int(u['premium_until'].timestamp() * 1000)
@@ -1109,7 +1118,7 @@ def profile():
         <p style="color:var(--gray); margin-bottom:10px;"><i class="fas fa-phone"></i> {{ u.number }}</p>
         <p style="color:var(--gold); font-weight:bold; margin-bottom:10px;"><i class="fas fa-coins"></i> ব্যালেন্স: {{ u.get('coins', 0) }}</p>
         
-        {% if u.premium_until and u.premium_until > now %}
+        {% if u.get('premium_until') and u.get('premium_until') > now %}
         <div style="background:#1a1a1a; border:1px solid var(--gold); border-radius:10px; padding:15px; margin-bottom:20px;">
             <p style="color:var(--gold); font-weight:bold;"><i class="fas fa-crown"></i> প্রিমিয়াম একটিভ</p>
             <p style="font-size:12px; color:#fff;">মেয়াদ শেষ হতে বাকি:</p>
@@ -1117,7 +1126,7 @@ def profile():
             <script>startPremiumTimer({{ expiry_ts }}, 'profile-premium-timer');</script>
         </div>
         {% else %}
-        <p style="color:var(--primary); font-weight:bold; margin-bottom:20px;">পজিশন: {{ u.role|upper }}</p>
+        <p style="color:var(--primary); font-weight:bold; margin-bottom:20px;">পজিশন: {{ u.role|upper if u.role else 'USER' }}</p>
         {% endif %}
         
         <a href="/logout" class="btn" style="background:#333;">লগআউট (Logout)</a>
@@ -1151,13 +1160,13 @@ def handle_bot_start(m):
                 ep_index = movie['episodes'].index(msg_id) + 1
             
             movie_name = movie['title'] if movie else "Unknown Movie"
-            caption = f"🎬 {movie_name}\\n🎞 Episode: {ep_index:02d}\\n\\nধন্যবাদ ড্রামা স্টোর কিং এর সাথে থাকার জন্য।"
+            caption = f"🎬 {movie_name}\n🎞 Episode: {ep_index:02d}\n\nধন্যবাদ ড্রামা স্টোর কিং এর সাথে থাকার জন্য।"
             
             protect = True if settings.get('protect_content') == "Yes" else False
             
             sent_msg = bot.copy_message(m.chat.id, channel_id, msg_id, caption=caption, protect_content=protect)
             
-            bot.send_message(m.chat.id, f"✅ ফাইলটি উপরে দেওয়া হয়েছে।\\n⚠️ এটি {settings.get('auto_delete_time')} মিনিট পর অটো ডিলিট হয়ে যাবে।")
+            bot.send_message(m.chat.id, f"✅ ফাইলটি উপরে দেওয়া হয়েছে।\n⚠️ এটি {settings.get('auto_delete_time')} মিনিট পর অটো ডিলিট হয়ে যাবে।")
             
             threading.Thread(target=delete_msg, args=(m.chat.id, sent_msg.message_id, int(settings.get('auto_delete_time', 5)))).start()
 
