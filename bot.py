@@ -11,6 +11,7 @@ BOT_USERNAME = "dramastorkingsbot"  # বটের ইউজারনেম (@ �
 MONGO_URI = "mongodb+srv://drama:drama@cluster0.sa4kvgu.mongodb.net/?appName=Cluster0"
 BASE_URL = "https://dramastoreking24.vercel.app"
 
+# Vercel-এর জন্য 'app' অবজেক্টটি এখানে ডিফাইন করা হলো
 app = Flask(__name__)
 app.secret_key = "premium_movie_system_key_99"
 app.config["MONGO_URI"] = MONGO_URI
@@ -106,7 +107,7 @@ LAYOUT = f"""
               <p style="background:var(--primary); padding:10px; text-align:center; border-radius:5px;">{{{{ message }}}}</p>
             {{% endfor %}}
           {{% endif %}}
-        {{% endwith %}}
+        {{% with messages = get_flashed_messages() %}}
         
         {{% block content %}}{{% endblock %}}
     </div>
@@ -346,7 +347,8 @@ def set_webhook():
     s = bot.set_webhook(url=BASE_URL + '/' + TOKEN)
     return "Success" if s else "Failed"
 
-# Vercel-এর জন্য এক্সপোর্ট (অত্যন্ত গুরুত্বপূর্ণ)
+# Vercel-এর জন্য এক্সপোর্ট এবং লোকাল রান সেটিংস
+app = app
 handler = app
 
 if __name__ == '__main__':
