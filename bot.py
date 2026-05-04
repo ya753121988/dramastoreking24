@@ -44,8 +44,8 @@ FULL_CSS = """
         --card-bg: #121212; 
         --text: #ffffff; 
         --gray: #b3b3b3; 
-        --transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
         --gold: #ffd700;
+        --transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { 
@@ -184,6 +184,7 @@ FULL_CSS = """
         box-shadow: 0 4px 15px rgba(0,0,0,0.3);
     }
     .slider-item img { width: 100%; height: 100%; object-fit: cover; opacity: 0.6; transition: var(--transition); }
+    .slider-item:hover img { transform: scale(1.05); opacity: 0.8; }
     .slider-info { 
         position: absolute; bottom: 15px; left: 15px; 
         font-weight: bold; font-size: 18px;
@@ -343,7 +344,8 @@ def render_full_page(body_html, **kwargs):
     if 'user_id' in session:
         user_data = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
     
-    full_html = """
+    # Internal Server Error এড়াতে f-string এর পরিবর্তে Concatenation ব্যবহার করা হয়েছে
+    template_start = """
     <!DOCTYPE html>
     <html lang="bn">
     <head>
@@ -390,13 +392,16 @@ def render_full_page(body_html, **kwargs):
                     <div style="background:var(--primary); padding:15px; text-align:center; border-radius:10px; margin-bottom:20px; font-weight:bold;">{{ m }}</div>
                 {% endfor %}
             {% endwith %}
+            """
             
-            """ + body_html + """
+    template_end = """
         </div>
     </body>
     </html>
     """
-    return render_template_string(full_html, settings=settings, session=session, user_data=user_data, now=datetime.datetime.now(), **kwargs)
+    
+    full_template = template_start + body_html + template_end
+    return render_template_string(full_template, settings=settings, session=session, user_data=user_data, now=datetime.datetime.now(), **kwargs)
 
 # --- সাইট লজিক রাউটস ---
 
@@ -514,7 +519,7 @@ def tasks():
             .then(res => res.json())
             .then(data => {
                 if(data.success) {
-                    alert('অভিনন্দন! ১০ কয়েন আপনার ব্যালেন্সে যোগ হয়েছে।');
+                    alert('অভিনন্দন! পুরস্কার আপনার ব্যালেন্সে যোগ হয়েছে।');
                     location.reload();
                 }
             });
@@ -581,7 +586,6 @@ def purchase_premium(oid):
         days = int(offer['days'])
         now = datetime.datetime.now()
         
-        # বর্তমান প্রিমিয়ামের সাথে যোগ করা
         current_expiry = user.get('premium_until')
         if current_expiry and current_expiry > now:
             new_expiry = current_expiry + datetime.timedelta(days=days)
@@ -596,6 +600,8 @@ def purchase_premium(oid):
     else:
         flash("আপনার পর্যাপ্ত কয়েন নেই!")
     return redirect('/profile')
+
+# --- আগের সব রাউটস অক্ষুণ্ণ রাখা হয়েছে ---
 
 @app.route('/search')
 def search():
@@ -616,7 +622,7 @@ def search():
             </div>
         </div>
         {% else %}
-        <p style="text-align:center; grid-column: 1/-1; padding: 50px; color: var(--gray);">দুঃখিত, আপনার সার্চ করা মুভিটি পাওয়া যায়নি।</p>
+        <p style="text-align:center; grid-column: 1/-1; padding: 50px; color: var(--gray);">দুঃখিত, আপনার সার্চ করা মুভিটি পাওয়া যায়নি।</p>
         {% endfor %}
     </div>
     """
@@ -651,7 +657,7 @@ def movie_detail(m_id):
         </div>
         
         <div class="card" style="max-width:100%; text-align:left; border-top:4px solid var(--primary);">
-            <h4 style="margin-bottom:20px; border-bottom:1px solid #333; padding-bottom:10px;">ডাউনলোড এবং ওয়াচ লিঙ্ক:</h4>
+            <h4 style="margin-bottom:20px; border-bottom:1px solid #333; padding-bottom:10px;">ডাউনলোড এবং ওয়াচ লিঙ্ক:</h4>
             <div class="episode-list">
                 {% for msg_id in movie.episodes %}
                 <div class="ep-button" onclick="processAd('{{ msg_id }}_idx_{{ loop.index0 }}', '{{ msg_id }}')">
@@ -749,9 +755,7 @@ def admin():
         flash("আপনার এডমিন অ্যাক্সেস নেই!")
         return redirect('/')
     
-    # settings fetch করা হয়েছে যা আগে মিসিং ছিল
     settings = get_site_settings()
-    
     search_q = request.args.get('search_movie', '')
     manage_movies = list(mongo.db.movies.find({"title": {"$regex": search_q, "$options": "i"}}).sort("_id", -1).limit(50))
     current_tasks = list(mongo.db.tasks.find())
