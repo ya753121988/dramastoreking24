@@ -336,9 +336,11 @@ FULL_CSS = """
         function update() {
             const now = new Date().getTime();
             const diff = expiryTimestamp - now;
+            const el = document.getElementById(elementId);
+            if(!el) return;
 
             if (diff <= 0) {
-                document.getElementById(elementId).innerHTML = "মেয়াদ শেষ";
+                el.innerHTML = "মেয়াদ শেষ";
                 return;
             }
 
@@ -357,7 +359,7 @@ FULL_CSS = """
             if (days > 0) timeStr += days + " দিন ";
             timeStr += hours + " ঘণ্টা " + minutes + " মি. " + seconds + " সে.";
 
-            document.getElementById(elementId).innerHTML = timeStr;
+            el.innerHTML = timeStr;
         }
         setInterval(update, 1000);
         update();
@@ -830,7 +832,6 @@ def movie_detail(m_id):
             }
 
             if (data.count < AD_LIMIT) {
-                // Trigger Ad Faster
                 if (typeof window['show_' + {{ settings.monetag_id }}] === 'function') {
                     window['show_' + {{ settings.monetag_id }}]();
                 }
@@ -856,6 +857,7 @@ def admin():
         return redirect('/')
     
     settings = get_site_settings()
+    admin_user = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
     search_q = request.args.get('search_movie', '')
     manage_movies = list(mongo.db.movies.find({"title": {"$regex": search_q, "$options": "i"}}).sort("_id", -1).limit(50))
     current_tasks = list(mongo.db.tasks.find())
@@ -869,6 +871,14 @@ def admin():
                 "notice": request.form.get('notice')
             }}, upsert=True)
             flash("সাইট সেটিংস আপডেট হয়েছে!")
+        elif action == 'update_admin':
+            new_num = request.form.get('admin_number')
+            new_pw = request.form.get('admin_password')
+            up_data = {"number": new_num}
+            if new_pw:
+                up_data["password"] = generate_password_hash(new_pw)
+            mongo.db.users.update_one({"_id": admin_user['_id']}, {"$set": up_data})
+            flash("এডমিন আইডি এবং পাসওয়ার্ড সফলভাবে আপডেট হয়েছে!")
         elif action == 'add_task':
             mongo.db.tasks.insert_one({
                 "title": request.form.get('title'),
@@ -903,11 +913,25 @@ def admin():
             mid = request.form.get('movie_id')
             mongo.db.movies.delete_one({"_id": ObjectId(mid)})
             flash("মুভিটি ডিলিট করা হয়েছে!")
-            return redirect('/admin')
             
         return redirect('/admin')
 
     content = """
+    <div style="text-align:right; margin-bottom:20px;">
+        <a href="/logout" class="btn" style="background:#333; display:inline-block; width:auto; padding:10px 20px;">লগআউট (Admin Logout)</a>
+    </div>
+
+    <div class="card" style="border-top:4px solid #00c6ff;">
+        <h3><i class="fas fa-user-lock"></i> এডমিন ক্রেডেনশিয়াল</h3>
+        <p style="color:var(--gray); font-size:12px; margin-bottom:10px;">লগিন করার মোবাইল নম্বর এবং পাসওয়ার্ড পরিবর্তন করুন।</p>
+        <form method="POST">
+            <input type="hidden" name="action" value="update_admin">
+            মোবাইল নম্বর: <input name="admin_number" value="{{ admin_user.number }}" required>
+            নতুন পাসওয়ার্ড (ফাঁকা রাখলে আগেরটাই থাকবে): <input type="password" name="admin_password" placeholder="নতুন পাসওয়ার্ড">
+            <button class="btn" type="submit" style="background:#00c6ff;">আপডেট ক্রেডেনশিয়াল</button>
+        </form>
+    </div>
+
     <div class="card">
         <h3><i class="fas fa-plus"></i> নতুন টাস্ক এড করুন</h3>
         <form method="POST">
@@ -1009,7 +1033,7 @@ def admin():
         </div>
     </div>
     """
-    return render_full_page(content, manage_movies=manage_movies, settings=settings, current_tasks=current_tasks, current_offers=current_offers)
+    return render_full_page(content, admin_user=admin_user, manage_movies=manage_movies, settings=settings, current_tasks=current_tasks, current_offers=current_offers)
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
