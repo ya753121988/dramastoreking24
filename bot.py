@@ -45,6 +45,7 @@ FULL_CSS = """
         --text: #ffffff; 
         --gray: #b3b3b3; 
         --transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        --gold: #ffd700;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { 
@@ -103,6 +104,38 @@ FULL_CSS = """
     }
     .navbar a i { font-size: 18px; }
     .navbar a:hover, .navbar a.active { color: var(--primary); }
+
+    .user-stats-bar {
+        background: #1a1a1a;
+        padding: 10px 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid #333;
+        font-size: 14px;
+    }
+
+    .feature-menus {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+        margin: 15px 0;
+    }
+    .menu-btn {
+        padding: 15px;
+        border-radius: 12px;
+        text-align: center;
+        text-decoration: none;
+        font-weight: bold;
+        color: white;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        transition: var(--transition);
+    }
+    .btn-premium { background: linear-gradient(45deg, #FFD700, #FFA500); color: #000; }
+    .btn-task { background: linear-gradient(45deg, #00c6ff, #0072ff); }
+    .menu-btn:hover { transform: scale(1.03); }
 
     .search-container {
         padding: 15px 20px;
@@ -236,6 +269,30 @@ FULL_CSS = """
     .ep-button:hover { background: #282828; transform: scale(1.02); box-shadow: 0 5px 15px rgba(229, 9, 20, 0.2); }
     .ep-status { font-size: 12px; font-weight: normal; color: var(--gray); margin-top: 5px; display: block; }
     
+    /* Task Cards */
+    .task-card {
+        background: #1a1a1a;
+        border: 1px solid #333;
+        border-radius: 12px;
+        padding: 15px;
+        margin-bottom: 15px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .task-info h4 { font-size: 16px; margin-bottom: 5px; }
+    .task-info p { color: var(--gold); font-size: 13px; font-weight: bold; }
+    .task-btn {
+        background: var(--primary);
+        color: white;
+        padding: 8px 15px;
+        border-radius: 8px;
+        text-decoration: none;
+        font-size: 14px;
+        font-weight: bold;
+    }
+    .task-btn.link { background: #28a745; }
+
     /* Admin Manage List */
     .manage-item {
         display: flex; justify-content: space-between; align-items: center;
@@ -282,6 +339,11 @@ def render_full_page(body_html, **kwargs):
     settings = get_site_settings()
     current_path = request.path
     
+    # ইউজার ব্যালেন্স ও প্রিমিয়াম চেক
+    user_data = None
+    if 'user_id' in session:
+        user_data = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
+    
     full_html = f"""
     <!DOCTYPE html>
     <html lang="bn">
@@ -305,6 +367,17 @@ def render_full_page(body_html, **kwargs):
             {{% endif %}}
         </div>
 
+        {{% if user_data %}}
+        <div class="user-stats-bar">
+            <span><i class="fas fa-wallet" style="color:gold;"></i> ব্যালেন্স: <b>{{{{ user_data.get('coins', 0) }}}}</b> কয়েন</span>
+            {{% if user_data.get('premium_until') and user_data.get('premium_until') > now %}}
+            <span style="color:gold; font-weight:bold;"><i class="fas fa-crown"></i> প্রিমিয়াম</span>
+            {{% else %}}
+            <span style="color:var(--gray);">ফ্রি ইউজার</span>
+            {{% endif %}}
+        </div>
+        {{% endif %}}
+
         <div class="search-container">
             <form action="/search" method="GET" class="search-form">
                 <input type="text" name="q" placeholder="মুভি বা ড্রামা সার্চ করুন..." value="{{{{ request.args.get('q', '') }}}}" required>
@@ -324,13 +397,13 @@ def render_full_page(body_html, **kwargs):
     </body>
     </html>
     """
-    return render_template_string(full_html, settings=settings, session=session, **kwargs)
+    return render_template_string(full_html, settings=settings, session=session, user_data=user_data, now=datetime.datetime.now(), **kwargs)
 
 # --- সাইট লজিক রাউটস ---
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    if request.method == 'POST': return "OK", 200 # Koyeb Health Check Support
+    if request.method == 'POST': return "OK", 200 
     if 'user_id' not in session: return redirect(url_for('login'))
     
     page = int(request.args.get('page', 1))
@@ -341,6 +414,17 @@ def index():
     movies = list(mongo.db.movies.find().sort("_id", -1).skip(skip).limit(per_page))
 
     content = """
+    <div class="feature-menus">
+        <a href="/buy-premium" class="menu-btn btn-premium">
+            <i class="fas fa-crown fa-lg"></i>
+            <span>প্রিমিয়াম বায়</span>
+        </a>
+        <a href="/tasks" class="menu-btn btn-task">
+            <i class="fas fa-tasks fa-lg"></i>
+            <span>এড টাস্ক</span>
+        </a>
+    </div>
+
     <div class="section-title">টপ ট্রেন্ডিং (ভিওড) <i class="fas fa-fire" style="color:orange;"></i></div>
     <div class="slider">
         {% for s in sliders %}
@@ -374,6 +458,148 @@ def index():
     </div>
     """
     return render_full_page(content, sliders=sliders, movies=movies, page=page)
+
+# --- টাস্ক এবং প্রিমিয়াম লজিক ---
+
+@app.route('/tasks')
+def tasks():
+    if 'user_id' not in session: return redirect('/login')
+    tasks = list(mongo.db.tasks.find())
+    
+    # ইউজার কোনটা শেষ করেছে তা ট্র্যাক করা (অপশনাল)
+    user = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
+    completed = user.get('completed_tasks', [])
+
+    content = """
+    <div class="section-title">কয়েন ইনকাম করুন <i class="fas fa-coins" style="color:gold;"></i></div>
+    {% for t in tasks %}
+    <div class="task-card">
+        <div class="task-info">
+            <h4>{{ t.title }}</h4>
+            <p>+{{ t.reward }} কয়েন</p>
+        </div>
+        {% if t._id|string in completed %}
+            <span style="color:var(--gray); font-weight:bold;">সম্পন্ন</span>
+        {% else %}
+            {% if t.type == 'monetag' %}
+                <button onclick="runMonetag('{{ t._id }}')" class="task-btn">Watch Now</button>
+            {% else %}
+                <a href="/complete-link-task/{{ t._id }}" target="_blank" onclick="setTimeout(()=>location.reload(), 2000)" class="task-btn link">Visit Now</a>
+            {% endif %}
+        {% endif %}
+    </div>
+    {% endfor %}
+
+    <!-- Monetag Script Holder -->
+    <div id="ad-container"></div>
+
+    <script>
+        function runMonetag(taskId) {
+            fetch('/get-task-script/' + taskId)
+            .then(res => res.json())
+            .then(data => {
+                if(data.script) {
+                    const div = document.createElement('div');
+                    div.innerHTML = data.script;
+                    document.body.appendChild(div);
+                    
+                    // এখানে একটি ফেক ডিলে দিয়ে কয়েন অ্যাড করা হচ্ছে
+                    setTimeout(() => {
+                        claimReward(taskId);
+                    }, 5000);
+                }
+            });
+        }
+
+        function claimReward(taskId) {
+            fetch('/claim-task/' + taskId, {method: 'POST'})
+            .then(res => res.json())
+            .then(data => {
+                if(data.success) {
+                    alert('অভিনন্দন! ১০ কয়েন আপনার ব্যালেন্সে যোগ হয়েছে।');
+                    location.reload();
+                }
+            });
+        }
+    </script>
+    """
+    return render_full_page(content, tasks=tasks, completed=completed)
+
+@app.route('/get-task-script/<tid>')
+def get_task_script(tid):
+    t = mongo.db.tasks.find_one({"_id": ObjectId(tid)})
+    return jsonify({"script": t['content'] if t else ""})
+
+@app.route('/complete-link-task/<tid>')
+def complete_link_task(tid):
+    if 'user_id' not in session: return redirect('/login')
+    t = mongo.db.tasks.find_one({"_id": ObjectId(tid)})
+    if t:
+        mongo.db.users.update_one({"_id": ObjectId(session['user_id'])}, {
+            "$inc": {"coins": t['reward']},
+            "$addToSet": {"completed_tasks": str(t['_id'])}
+        })
+        return redirect(t['content'])
+    return redirect('/tasks')
+
+@app.route('/claim-task/<tid>', methods=['POST'])
+def claim_task(tid):
+    if 'user_id' not in session: return jsonify({"success": False})
+    t = mongo.db.tasks.find_one({"_id": ObjectId(tid)})
+    if t:
+        mongo.db.users.update_one({"_id": ObjectId(session['user_id'])}, {
+            "$inc": {"coins": t['reward']},
+            "$addToSet": {"completed_tasks": str(t['_id'])}
+        })
+        return jsonify({"success": True})
+    return jsonify({"success": False})
+
+@app.route('/buy-premium')
+def buy_premium():
+    if 'user_id' not in session: return redirect('/login')
+    offers = list(mongo.db.offers.find())
+    content = """
+    <div class="section-title">প্রিমিয়াম প্যাকেজ <i class="fas fa-crown" style="color:gold;"></i></div>
+    <p style="margin-bottom:20px; color:var(--gray);">প্রিমিয়াম কিনলে কোনো বিজ্ঞাপন ছাড়াই মুভি দেখতে পারবেন।</p>
+    {% for o in offers %}
+    <div class="task-card">
+        <div class="task-info">
+            <h4>{{ o.days }} দিনের প্রিমিয়াম</h4>
+            <p>{{ o.price }} কয়েন</p>
+        </div>
+        <a href="/purchase-premium/{{ o._id }}" class="task-btn" style="background:gold; color:black;" onclick="return confirm('আপনি কি নিশ্চিত?')">কিনুন</a>
+    </div>
+    {% endfor %}
+    """
+    return render_full_page(content, offers=offers)
+
+@app.route('/purchase-premium/<oid>')
+def purchase_premium(oid):
+    if 'user_id' not in session: return redirect('/login')
+    offer = mongo.db.offers.find_one({"_id": ObjectId(oid)})
+    user = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
+    
+    if user.get('coins', 0) >= offer['price']:
+        days = int(offer['days'])
+        now = datetime.datetime.now()
+        
+        # বর্তমান প্রিমিয়ামের সাথে যোগ করা
+        current_expiry = user.get('premium_until')
+        if current_expiry and current_expiry > now:
+            new_expiry = current_expiry + datetime.timedelta(days=days)
+        else:
+            new_expiry = now + datetime.timedelta(days=days)
+            
+        mongo.db.users.update_one({"_id": ObjectId(session['user_id'])}, {
+            "$inc": {"coins": -offer['price']},
+            "$set": {"premium_until": new_expiry}
+        })
+        flash(f"সফলভাবে {days} দিনের প্রিমিয়াম কেনা হয়েছে!")
+    else:
+        flash("আপনার পর্যাপ্ত কয়েন নেই!")
+    return redirect('/profile')
+
+# --- আগের সব রাউটস অক্ষুণ্ণ রাখা হয়েছে ---
 
 @app.route('/search')
 def search():
@@ -411,6 +637,10 @@ def movie_detail(m_id):
     )
     if not movie: return redirect('/')
     
+    # ইউজার প্রিমিয়াম কিনা চেক
+    user = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
+    is_premium = user.get('premium_until') and user['premium_until'] > datetime.datetime.now()
+
     content = f"""
     <div class="back-btn-container">
         <a href="/" onclick="showLoader();" class="back-btn"><i class="fas fa-arrow-left"></i> ব্যাক টু হোম</a>
@@ -446,8 +676,14 @@ def movie_detail(m_id):
     <script>
         const AD_LIMIT = {{{{ settings.ad_limit }}}};
         const LOCK_MINUTES = {{{{ settings.lock_duration }}}};
+        const IS_PREMIUM = {{{{ 'true' if is_premium else 'false' }}}};
 
         function updateStatus(uniqueId) {{
+            if(IS_PREMIUM) {{
+                document.getElementById('status_' + uniqueId).innerHTML = "🔓 প্রিমিয়াম আনলকড (No Ads)";
+                document.getElementById('status_' + uniqueId).style.color = "gold";
+                return;
+            }}
             let data = JSON.parse(localStorage.getItem('ad_data_' + uniqueId) || '{{"count":0, "unlocked_at":0}}');
             let statusEl = document.getElementById('status_' + uniqueId);
             let now = new Date().getTime();
@@ -476,6 +712,12 @@ def movie_detail(m_id):
         }});
 
         function processAd(uniqueId, fileId) {{
+            if(IS_PREMIUM) {{
+                showLoader();
+                window.location.href = "https://t.me/" + "{BOT_USERNAME}" + "?start=file_" + fileId;
+                return;
+            }}
+
             let data = JSON.parse(localStorage.getItem('ad_data_' + uniqueId) || '{{"count":0, "unlocked_at":0}}');
             let now = new Date().getTime();
 
@@ -502,7 +744,7 @@ def movie_detail(m_id):
         }}
     </script>
     """
-    return render_full_page(content, movie=movie)
+    return render_full_page(content, movie=movie, is_premium=is_premium)
 
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
@@ -512,6 +754,8 @@ def admin():
     
     search_q = request.args.get('search_movie', '')
     manage_movies = list(mongo.db.movies.find({"title": {"$regex": search_q, "$options": "i"}}).sort("_id", -1).limit(50))
+    current_tasks = list(mongo.db.tasks.find())
+    current_offers = list(mongo.db.offers.find())
 
     if request.method == 'POST':
         action = request.form.get('action')
@@ -521,6 +765,24 @@ def admin():
                 "notice": request.form.get('notice')
             }}, upsert=True)
             flash("সাইট সেটিংস আপডেট হয়েছে!")
+        elif action == 'add_task':
+            mongo.db.tasks.insert_one({
+                "title": request.form.get('title'),
+                "type": request.form.get('type'),
+                "content": request.form.get('content'),
+                "reward": 10
+            })
+            flash("টাস্ক এড হয়েছে!")
+        elif action == 'add_offer':
+            mongo.db.offers.insert_one({
+                "days": request.form.get('days'),
+                "price": int(request.form.get('price'))
+            })
+            flash("অফার এড হয়েছে!")
+        elif action == 'del_task':
+            mongo.db.tasks.delete_one({"_id": ObjectId(request.form.get('tid'))})
+        elif action == 'del_offer':
+            mongo.db.offers.delete_one({"_id": ObjectId(request.form.get('oid'))})
         elif action == 'ad':
             mongo.db.settings.update_one({"type": "config"}, {"$set": {
                 "monetag_id": request.form.get('monetag_id'),
@@ -541,6 +803,54 @@ def admin():
 
     content = """
     <div class="card">
+        <h3><i class="fas fa-plus"></i> নতুন টাস্ক এড করুন</h3>
+        <form method="POST">
+            <input type="hidden" name="action" value="add_task">
+            <input name="title" placeholder="টাস্ক টাইটেল" required>
+            <select name="type">
+                <option value="monetag">মনিটেগ স্ক্রিপ্ট</option>
+                <option value="link">ডিরেক্ট লিঙ্ক</option>
+            </select>
+            <textarea name="content" placeholder="স্ক্রিপ্ট অথবা লিঙ্ক এখানে দিন" style="width:100%; height:100px; background:#1a1a1a; color:white; padding:10px; border-radius:10px; border:1px solid #333;"></textarea>
+            <button class="btn" type="submit">টাস্ক সেভ করুন</button>
+        </form>
+        <div style="margin-top:20px;">
+            {% for t in current_tasks %}
+            <div class="manage-item">
+                <span>{{ t.title }}</span>
+                <form method="POST" style="margin:0;">
+                    <input type="hidden" name="action" value="del_task">
+                    <input type="hidden" name="tid" value="{{ t._id }}">
+                    <button class="del-btn" type="submit">X</button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="card">
+        <h3><i class="fas fa-crown"></i> প্রিমিয়াম অফার এড</h3>
+        <form method="POST">
+            <input type="hidden" name="action" value="add_offer">
+            <input name="days" placeholder="কত দিন (উদা: 30)" required>
+            <input name="price" placeholder="কত কয়েন (উদা: 100)" required>
+            <button class="btn" type="submit">অফার সেভ করুন</button>
+        </form>
+        <div style="margin-top:20px;">
+            {% for o in current_offers %}
+            <div class="manage-item">
+                <span>{{ o.days }} দিন - {{ o.price }} কয়েন</span>
+                <form method="POST" style="margin:0;">
+                    <input type="hidden" name="action" value="del_offer">
+                    <input type="hidden" name="oid" value="{{ o._id }}">
+                    <button class="del-btn" type="submit">X</button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="card">
         <h3><i class="fas fa-cog"></i> জেনারেল সেটিংস</h3>
         <form method="POST">
             <input type="hidden" name="action" value="site">
@@ -549,6 +859,7 @@ def admin():
             <button class="btn" type="submit">সেভ জেনারেল সেটিংস</button>
         </form>
     </div>
+
     <div class="card" style="border-top:4px solid green;">
         <h3><i class="fas fa-ad"></i> মনিটেগ ও লক সেটিংস</h3>
         <form method="POST">
@@ -568,17 +879,16 @@ def admin():
     </div>
 
     <div class="card" style="max-width:800px; border-top:4px solid var(--primary);">
-        <h3><i class="fas fa-tasks"></i> মুভি ম্যানেজমেন্ট (ডিলিট/সার্চ)</h3>
+        <h3><i class="fas fa-tasks"></i> মুভি ম্যানেজমেন্ট</h3>
         <form method="GET" style="display:flex; gap:10px; margin-bottom:20px;">
-            <input name="search_movie" placeholder="মুভি ডিলিট করতে সার্চ করুন..." value="{{ request.args.get('search_movie', '') }}">
+            <input name="search_movie" placeholder="সার্চ..." value="{{ request.args.get('search_movie', '') }}">
             <button type="submit" class="btn" style="width:100px;">সার্চ</button>
         </form>
-        
         <div class="manage-list">
             {% for m in manage_movies %}
             <div class="manage-item">
-                <span>{{ m.title }} ({{ m.category }})</span>
-                <form method="POST" style="margin:0;" onsubmit="return confirm('আপনি কি নিশ্চিত যে মুভিটি ডিলিট করবেন?')">
+                <span>{{ m.title }}</span>
+                <form method="POST" style="margin:0;">
                     <input type="hidden" name="action" value="delete_movie">
                     <input type="hidden" name="movie_id" value="{{ m._id }}">
                     <button class="del-btn" type="submit">ডিলিট</button>
@@ -588,7 +898,7 @@ def admin():
         </div>
     </div>
     """
-    return render_full_page(content, manage_movies=manage_movies)
+    return render_full_page(content, manage_movies=manage_movies, settings=settings, current_tasks=current_tasks, current_offers=current_offers)
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -601,7 +911,8 @@ def register():
             mongo.db.users.insert_one({
                 "fname": fname, "lname": lname, "number": num, 
                 "password": generate_password_hash(pw), "role": role, 
-                "joined": datetime.datetime.now()
+                "joined": datetime.datetime.now(),
+                "coins": 0, "completed_tasks": [], "premium_until": None
             })
             flash("রেজিস্ট্রেশন সফল! এখন লগিন করুন।")
             return redirect('/login')
@@ -656,6 +967,7 @@ def profile():
         </div>
         <h2 style="margin-bottom:10px;">{{{{ u.fname }}}} {{{{ u.lname }}}}</h2>
         <p style="color:var(--gray); margin-bottom:10px;"><i class="fas fa-phone"></i> {{{{ u.number }}}}</p>
+        <p style="color:var(--gold); font-weight:bold; margin-bottom:10px;"><i class="fas fa-coins"></i> ব্যালেন্স: {{{{ u.get('coins', 0) }}}}</p>
         <p style="color:var(--primary); font-weight:bold; margin-bottom:20px;">পজিশন: {{{{ u.role|upper }}}}</p>
         <a href="/logout" class="btn" style="background:#333;">লগআউট (Logout)</a>
     </div>
@@ -682,7 +994,6 @@ def handle_bot_start(m):
                 bot.reply_to(m, "❌ স্টোরেজ চ্যানেল সেট করা নেই!")
                 return
             
-            # মুভি ইনফো বের করা ক্যাপশনের জন্য
             movie = mongo.db.movies.find_one({"episodes": msg_id})
             ep_index = 0
             if movie:
@@ -693,17 +1004,14 @@ def handle_bot_start(m):
             
             protect = True if settings.get('protect_content') == "Yes" else False
             
-            # সরাসরি চ্যানেল থেকে মেসেজ কপি করে পাঠানো
             sent_msg = bot.copy_message(m.chat.id, channel_id, msg_id, caption=caption, protect_content=protect)
             
-            # ফাইল পাঠানো শেষে মেসেজ
-            bot.send_message(m.chat.id, f"✅ ফাইলটি উপরে দেওয়া হয়েছে।\n⚠️ কপিরাইট এড়াতে এটি {settings.get('auto_delete_time')} মিনিট পর অটো ডিলিট হয়ে যাবে।")
+            bot.send_message(m.chat.id, f"✅ ফাইলটি উপরে দেওয়া হয়েছে।\n⚠️ এটি {settings.get('auto_delete_time')} মিনিট পর অটো ডিলিট হয়ে যাবে।")
             
-            # অটো ডিলিট থ্রেড
             threading.Thread(target=delete_msg, args=(m.chat.id, sent_msg.message_id, int(settings.get('auto_delete_time', 5)))).start()
 
         except Exception as e:
-            bot.reply_to(m, "❌ ফাইলটি পাওয়া যায়নি অথবা চ্যানেল থেকে ডিলিট করা হয়েছে।")
+            bot.reply_to(m, "❌ ফাইলটি পাওয়া যায়নি।")
     else:
         bot.reply_to(m, "👋 স্বাগতম! মুভি এড করতে /movie নাম, ক্যাটাগরি লিখুন।")
 
@@ -730,21 +1038,21 @@ def handle_bot_inputs(m):
             file_info = bot.get_file(m.photo[-1].file_id)
             user_states[cid]["poster"] = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
             user_states[cid]["status"] = "AWAITING_EPISODES"
-            bot.reply_to(m, "✅ পোস্টার এড হয়েছে। এখন ভিডিও ফাইল পাঠান এবং সব শেষে /Done কমান্ড দিন।")
+            bot.reply_to(m, "✅ পোস্টার এড হয়েছে। ভিডিও ফাইল পাঠান এবং সব শেষে /Done দিন।")
         else:
-            bot.reply_to(m, "❌ দয়া করে একটি ফটো পাঠান।")
+            bot.reply_to(m, "❌ ফটো পাঠান।")
 
     elif state["status"] == "AWAITING_EPISODES":
         if m.text == '/Done':
             if not state["episodes"]:
-                bot.reply_to(m, "❌ কোনো এপিসোড এড করেননি।")
+                bot.reply_to(m, "❌ কোনো এপিসোড নেই।")
                 return
             mongo.db.movies.insert_one(user_states[cid])
             del user_states[cid]
-            bot.reply_to(m, "🚀 ড্রামাটি সফলভাবে ওয়েবসাইটে পাবলিশ হয়েছে!")
+            bot.reply_to(m, "🚀 ওয়েবসাইটে পাবলিশ হয়েছে!")
         elif m.content_type in ['video', 'document']:
             if not channel_id:
-                bot.reply_to(m, "❌ এডমিন প্যানেলে স্টোরেজ চ্যানেল আইডি সেট করা নেই।")
+                bot.reply_to(m, "❌ চ্যানেল আইডি নেই।")
                 return
             try:
                 if m.content_type == 'video':
@@ -753,9 +1061,9 @@ def handle_bot_inputs(m):
                     sent = bot.send_document(channel_id, m.document.file_id)
                 
                 user_states[cid]['episodes'].append(sent.message_id)
-                bot.reply_to(m, f"✅ এপিসোড {len(user_states[cid]['episodes'])} যুক্ত হয়েছে (ID: {sent.message_id})। আরও থাকলে পাঠান নতুবা /Done দিন।")
+                bot.reply_to(m, f"✅ এপিসোড {len(user_states[cid]['episodes'])} যুক্ত হয়েছে।")
             except Exception as e:
-                bot.reply_to(m, f"❌ এরর: {str(e)}\nনিশ্চিত করুন বট চ্যানেলে এডমিন আছে।")
+                bot.reply_to(m, f"❌ এরর: {str(e)}")
 
 # --- Webhook receiver ---
 
