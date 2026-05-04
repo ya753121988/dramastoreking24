@@ -15,3 +15,8 @@ pyrogram
 tgcrypto
 pymongo
 dnspython
+Flask
+Flask-PyMongo
+pyTelegramBotAPI
+pymongo
+werkzeug
