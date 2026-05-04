@@ -396,7 +396,6 @@ def movie_detail(m_id):
             let statusEl = document.getElementById('status_' + uniqueId);
             let now = new Date().getTime();
             
-            // সময় অতিক্রান্ত হয়েছে কিনা চেক
             if (data.unlocked_at > 0) {{
                 let elapsed = (now - data.unlocked_at) / (1000 * 60);
                 if (elapsed >= LOCK_MINUTES) {{
@@ -416,7 +415,6 @@ def movie_detail(m_id):
             }}
         }}
 
-        // পেজ লোড হলে স্ট্যাটাস চেক
         document.querySelectorAll('[id^="status_"]').forEach(el => {{
             updateStatus(el.id.replace('status_', ''));
         }});
@@ -425,10 +423,9 @@ def movie_detail(m_id):
             let data = JSON.parse(localStorage.getItem('ad_data_' + uniqueId) || '{{"count":0, "unlocked_at":0}}');
             let now = new Date().getTime();
 
-            // যদি অলরেডি আনলক থাকে
             if (data.unlocked_at > 0) {{
                 showLoader();
-                window.location.href = "https://t.me/{BOT_USERNAME}?start=" + fileId;
+                window.location.href = "https://t.me/" + "{BOT_USERNAME}" + "?start=" + fileId;
                 return;
             }}
 
@@ -439,13 +436,12 @@ def movie_detail(m_id):
                 data.count++;
                 localStorage.setItem('ad_data_' + uniqueId, JSON.stringify(data));
                 updateStatus(uniqueId);
-                alert("বিজ্ঞাপন সফলভাবে দেখা হয়েছে। আর " + (AD_LIMIT - data.count) + " বার দেখলে আনলক হবে।");
             }} else {{
                 data.unlocked_at = now;
                 localStorage.setItem('ad_data_' + uniqueId, JSON.stringify(data));
                 updateStatus(uniqueId);
                 showLoader();
-                window.location.href = "https://t.me/{BOT_USERNAME}?start=" + fileId;
+                window.location.href = "https://t.me/" + "{BOT_USERNAME}" + "?start=" + fileId;
             }}
         }}
     </script>
@@ -576,26 +572,30 @@ def logout():
     session.clear()
     return redirect('/login')
 
-# --- টেলিগ্রাম বট (ফাইল ডেলিভারি ফিক্সড) ---
+# --- টেলিগ্রাম বট (ফাইল ডেলিভারি সেকশন - ফিক্সড) ---
 
 @bot.message_handler(commands=['start'])
 def handle_bot_start(m):
-    # স্টার্ট কমান্ডের সাথে ফাইল আইডি থাকলে সেটি ডেলিভারি দিবে
-    args = m.text.split()
-    if len(args) > 1:
-        file_id = args[1]
+    # m.text এর মধ্যে '/start file_id' অংশটি থাকে
+    command_parts = m.text.split()
+    
+    if len(command_parts) > 1:
+        # ইউজার লিঙ্ক থেকে এসেছে এবং সাথে ফাইল আইডি আছে
+        file_id = command_parts[1]
         bot.send_chat_action(m.chat.id, 'upload_document')
+        
         try:
-            # প্রথমে ভিডিও হিসেবে ট্রাই করবে
-            bot.send_video(m.chat.id, file_id, caption="🎬 আপনার ফাইলটি এখানে।\n\nড্রামা স্টোর কিং এর সাথে থাকার জন্য ধন্যবাদ।")
-        except:
-            # ভিডিও না হলে ডকুমেন্ট হিসেবে পাঠাবে
+            # প্রথমে ভিডিও হিসেবে পাঠানোর চেষ্টা করবে
+            bot.send_video(m.chat.id, file_id, caption="🎬 আপনার কাঙ্ক্ষিত ভিডিওটি এখানে।\n\nড্রামা স্টোর কিং এর সাথে থাকার জন্য ধন্যবাদ।")
+        except Exception:
             try:
-                bot.send_document(m.chat.id, file_id, caption="🎬 আপনার ফাইলটি এখানে।\n\nড্রামা স্টোর কিং এর সাথে থাকার জন্য ধন্যবাদ।")
-            except:
-                bot.reply_to(m, "❌ দুঃখিত, ফাইলটি খুঁজে পাওয়া যায়নি।")
+                # ভিডিও না হলে ডকুমেন্ট হিসেবে পাঠানোর চেষ্টা করবে
+                bot.send_document(m.chat.id, file_id, caption="🎬 আপনার কাঙ্ক্ষিত ফাইলটি এখানে।\n\nড্রামা স্টোর কিং এর সাথে থাকার জন্য ধন্যবাদ।")
+            except Exception:
+                bot.reply_to(m, "❌ দুঃখিত, ফাইলটি বটের সার্ভারে খুঁজে পাওয়া যায়নি।")
     else:
-        bot.reply_to(m, "👋 হ্যালো! মুভি এড করতে /movie ব্যবহার করুন।")
+        # সাধারণ স্টার্ট কমান্ড
+        bot.reply_to(m, "👋 স্বাগতম! মুভি বা ড্রামা এড করতে /movie কমান্ড ব্যবহার করুন।")
 
 @bot.message_handler(commands=['movie'])
 def start_adding_movie(m):
@@ -650,9 +650,12 @@ def handle_bot_inputs(m):
 
 @app.route('/' + TOKEN, methods=['POST'])
 def webhook_receiver():
-    update = telebot.types.Update.de_json(request.get_data().decode('utf-8'))
-    bot.process_new_updates([update])
-    return "OK", 200
+    if request.headers.get('content-type') == 'application/json':
+        json_string = request.get_data().decode('utf-8')
+        update = telebot.types.Update.de_json(json_string)
+        bot.process_new_updates([update])
+        return "OK", 200
+    return "Forbidden", 403
 
 @app.route('/set_webhook')
 def setup_webhook():
