@@ -192,11 +192,11 @@ def movie_detail(m_id):
         
         <div class="card" style="max-width:100%; text-align:left;">
             <h4 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px;">এপিসোড ডাউনলোড লিঙ্ক:</h4>
-            {% for i, fid in enumerate(movie['episodes']) %}
-            <div class="ep-btn" onclick="handleAd('{fid}')">
-                <i class="fas fa-play-circle" style="color:var(--primary)"></i> &nbsp; Episode {i+1:02d} - ডাউনলোড করুন
+            {{% for i, fid in enumerate(movie['episodes']) %}}
+            <div class="ep-btn" onclick="handleAd('{{{{fid}}}}')">
+                <i class="fas fa-play-circle" style="color:var(--primary)"></i> &nbsp; Episode {{{{ "%02d" % (i+1) }}}} - ডাউনলোড করুন
             </div>
-            {% endfor %}
+            {{% endfor %}}
         </div>
     </div>
 
@@ -346,10 +346,8 @@ def set_webhook():
     s = bot.set_webhook(url=BASE_URL + '/' + TOKEN)
     return "Success" if s else "Failed"
 
-# একদম নিচের এই অংশটুকু পরিবর্তন করুন
+# Vercel-এর জন্য এক্সপোর্ট (অত্যন্ত গুরুত্বপূর্ণ)
+handler = app
+
 if __name__ == '__main__':
     app.run(debug=True)
-
-# ভার্সেলের জন্য এটি এক্সপোর্ট করুন 
-handler = app
-app = app
