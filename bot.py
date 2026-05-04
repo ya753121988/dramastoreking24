@@ -215,8 +215,10 @@ FULL_CSS = """
         border-left: 6px solid var(--primary); 
         color: #fff; text-decoration: none; font-weight: bold;
         transition: var(--transition);
+        cursor: pointer;
     }
     .ep-button:hover { background: #282828; transform: scale(1.02); box-shadow: 0 5px 15px rgba(229, 9, 20, 0.2); }
+    .ep-status { font-size: 12px; font-weight: normal; color: var(--gray); margin-top: 5px; display: block; }
     
     /* Responsive */
     @media (max-width: 600px) {
@@ -236,17 +238,21 @@ FULL_CSS = """
 """
 
 # --- ডাটাবেজ এবং সেটিংস হেল্পার ---
-# কালেকশন নাম 'settings' ব্যবহার করা হয়েছে
 def get_site_settings():
     try:
         s = mongo.db.settings.find_one({"type": "config"})
         if not s:
-            default = {"site_name": "PremiumMovie", "notice": "স্বাগতম আমাদের মুভি সাইটে!", "monetag_id": "10351894", "ad_limit": 2}
+            # ডিফল্ট lock_duration মিনিট হিসেবে ৩০ রাখা হলো
+            default = {"site_name": "PremiumMovie", "notice": "স্বাগতম!", "monetag_id": "10351894", "ad_limit": 2, "lock_duration": 30}
             mongo.db.settings.insert_one({"type": "config", **default})
             return default
+        # যদি lock_duration না থাকে তবে আপডেট করা
+        if "lock_duration" not in s:
+            mongo.db.settings.update_one({"type": "config"}, {"$set": {"lock_duration": 30}})
+            s["lock_duration"] = 30
         return s
     except Exception as e:
-        return {"site_name": "PremiumMovie", "notice": "Database Error!", "monetag_id": "10351894", "ad_limit": 2}
+        return {"site_name": "PremiumMovie", "notice": "Error!", "monetag_id": "10351894", "ad_limit": 2, "lock_duration": 30}
 
 # --- মাস্টার টেমপ্লেট মেকার ---
 def render_full_page(body_html, **kwargs):
@@ -300,7 +306,6 @@ def index():
     per_page = 20 if page == 1 else 50
     skip = 0 if page == 1 else 20 + (page - 2) * 50
     
-    # কালেকশন নাম 'movies' ব্যবহার করা হয়েছে
     sliders = list(mongo.db.movies.find().sort("views", -1).limit(20))
     movies = list(mongo.db.movies.find().sort("_id", -1).skip(skip).limit(per_page))
 
@@ -367,10 +372,13 @@ def movie_detail(m_id):
             <h4 style="margin-bottom:20px; border-bottom:1px solid #333; padding-bottom:10px;">ডাউনলোড এবং ওয়াচ লিঙ্ক:</h4>
             <div class="episode-list">
                 {{% for fid in movie.episodes %}}
-                <a href="javascript:void(0)" class="ep-button" onclick="processAd('{{{{ fid }}}}')">
-                    <span>🎬 Episode {{{{ "%02d" % (loop.index0 + 1) }}}}</span>
+                <div class="ep-button" onclick="processAd('{{{{ fid }}}}_idx_{{{{ loop.index0 }}}}', '{{{{ fid }}}}')">
+                    <div>
+                        🎬 Episode {{{{ "%02d" % (loop.index0 + 1) }}}}
+                        <span class="ep-status" id="status_{{{{ fid }}}}_idx_{{{{ loop.index0 }}}}">লোড হচ্ছে...</span>
+                    </div>
                     <i class="fas fa-download"></i>
-                </a>
+                </div>
                 {{% endfor %}}
             </div>
         </div>
@@ -380,20 +388,62 @@ def movie_detail(m_id):
     <script src='//libtl.com/sdk.js' data-zone='{{{{ settings.monetag_id }}}}' data-sdk='show_{{{{ settings.monetag_id }}}}'></script>
     
     <script>
-        function processAd(fileId) {{
-            let limit = {{{{ settings.ad_limit }}}};
-            let sessionKey = 'ad_viewed_' + fileId;
-            let currentCount = parseInt(sessionStorage.getItem(sessionKey)) || 0;
+        const AD_LIMIT = {{{{ settings.ad_limit }}}};
+        const LOCK_MINUTES = {{{{ settings.lock_duration }}}};
+
+        function updateStatus(uniqueId) {{
+            let data = JSON.parse(localStorage.getItem('ad_data_' + uniqueId) || '{{"count":0, "unlocked_at":0}}');
+            let statusEl = document.getElementById('status_' + uniqueId);
+            let now = new Date().getTime();
             
-            if (currentCount < limit) {{
-                // Show Monetag Ad
+            // সময় অতিক্রান্ত হয়েছে কিনা চেক
+            if (data.unlocked_at > 0) {{
+                let elapsed = (now - data.unlocked_at) / (1000 * 60);
+                if (elapsed >= LOCK_MINUTES) {{
+                    data.count = 0;
+                    data.unlocked_at = 0;
+                    localStorage.setItem('ad_data_' + uniqueId, JSON.stringify(data));
+                }}
+            }}
+
+            if (data.unlocked_at > 0) {{
+                let remain = Math.ceil(LOCK_MINUTES - (now - data.unlocked_at) / (1000 * 60));
+                statusEl.innerHTML = "🔓 আনলকড (বাকি " + remain + " মিনিট)";
+                statusEl.style.color = "#00ff00";
+            }} else {{
+                statusEl.innerHTML = "🔒 বিজ্ঞাপন দেখা হয়েছে: " + data.count + "/" + AD_LIMIT;
+                statusEl.style.color = "#b3b3b3";
+            }}
+        }}
+
+        // পেজ লোড হলে স্ট্যাটাস চেক
+        document.querySelectorAll('[id^="status_"]').forEach(el => {{
+            updateStatus(el.id.replace('status_', ''));
+        }});
+
+        function processAd(uniqueId, fileId) {{
+            let data = JSON.parse(localStorage.getItem('ad_data_' + uniqueId) || '{{"count":0, "unlocked_at":0}}');
+            let now = new Date().getTime();
+
+            // যদি অলরেডি আনলক থাকে
+            if (data.unlocked_at > 0) {{
+                showLoader();
+                window.location.href = "https://t.me/{BOT_USERNAME}?start=" + fileId;
+                return;
+            }}
+
+            if (data.count < AD_LIMIT) {{
                 if (typeof window['show_' + {{{{ settings.monetag_id }}}}] === 'function') {{
                     window['show_' + {{{{ settings.monetag_id }}}}]();
                 }}
-                currentCount++;
-                sessionStorage.setItem(sessionKey, currentCount);
-                alert("বিজ্ঞাপন লোড হচ্ছে... আর " + (limit - currentCount) + " বার দেখলে ডাউনলোড লিঙ্ক পাবেন।");
+                data.count++;
+                localStorage.setItem('ad_data_' + uniqueId, JSON.stringify(data));
+                updateStatus(uniqueId);
+                alert("বিজ্ঞাপন সফলভাবে দেখা হয়েছে। আর " + (AD_LIMIT - data.count) + " বার দেখলে আনলক হবে।");
             }} else {{
+                data.unlocked_at = now;
+                localStorage.setItem('ad_data_' + uniqueId, JSON.stringify(data));
+                updateStatus(uniqueId);
                 showLoader();
                 window.location.href = "https://t.me/{BOT_USERNAME}?start=" + fileId;
             }}
@@ -419,9 +469,10 @@ def admin():
         elif action == 'ad':
             mongo.db.settings.update_one({"type": "config"}, {"$set": {
                 "monetag_id": request.form.get('monetag_id'),
-                "ad_limit": int(request.form.get('ad_limit'))
+                "ad_limit": int(request.form.get('ad_limit')),
+                "lock_duration": int(request.form.get('lock_duration'))
             }}, upsert=True)
-            flash("বিজ্ঞাপন সেটিংস আপডেট হয়েছে!")
+            flash("বিজ্ঞাপন ও টাইমার সেটিংস আপডেট হয়েছে!")
         return redirect('/admin')
 
     content = """
@@ -436,12 +487,13 @@ def admin():
         </form>
     </div>
     <div class="card" style="border-top:4px solid green;">
-        <h3><i class="fas fa-ad"></i> মনিটেগ সেটিংস</h3>
+        <h3><i class="fas fa-ad"></i> মনিটেগ ও লক সেটিংস</h3>
         <form method="POST">
             <input type="hidden" name="action" value="ad">
             মনিটেগ জোন আইডি (Zone ID): <input name="monetag_id" value="{{ settings.monetag_id }}">
             এপিসোড প্রতি বিজ্ঞাপনের সংখ্যা: <input type="number" name="ad_limit" value="{{ settings.ad_limit }}">
-            <button class="btn" style="background:green;" type="submit">সেভ এড সেটিংস</button>
+            লিঙ্ক কত মিনিট আনলক থাকবে: <input type="number" name="lock_duration" value="{{ settings.lock_duration }}">
+            <button class="btn" style="background:green;" type="submit">সেভ অ্যাড সেটিংস</button>
         </form>
     </div>
     """
@@ -451,7 +503,6 @@ def admin():
 def register():
     if request.method == 'POST':
         fname, lname, num, pw = request.form.get('fname'), request.form.get('lname'), request.form.get('number'), request.form.get('password')
-        # কালেকশন নাম 'users' ব্যবহার করা হয়েছে
         if mongo.db.users.find_one({"number": num}):
             flash("এই নাম্বার দিয়ে অলরেডি অ্যাকাউন্ট আছে!")
         else:
@@ -507,7 +558,6 @@ def login():
 def profile():
     if 'user_id' not in session: return redirect('/login')
     u = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
-    # আপনার দেওয়া প্রোফাইল পেজ এর HTML
     html = f"""
     <div class="card" style="text-align:center;">
         <div style="width:100px; height:100px; background:var(--primary); border-radius:50%; margin:auto; display:flex; justify-content:center; align-items:center; font-size:40px; margin-bottom:20px;">
@@ -526,7 +576,26 @@ def logout():
     session.clear()
     return redirect('/login')
 
-# --- টেলিগ্রাম বট (অ্যাডভান্সড ফাইল স্টোর সিস্টেম) ---
+# --- টেলিগ্রাম বট (ফাইল ডেলিভারি ফিক্সড) ---
+
+@bot.message_handler(commands=['start'])
+def handle_bot_start(m):
+    # স্টার্ট কমান্ডের সাথে ফাইল আইডি থাকলে সেটি ডেলিভারি দিবে
+    args = m.text.split()
+    if len(args) > 1:
+        file_id = args[1]
+        bot.send_chat_action(m.chat.id, 'upload_document')
+        try:
+            # প্রথমে ভিডিও হিসেবে ট্রাই করবে
+            bot.send_video(m.chat.id, file_id, caption="🎬 আপনার ফাইলটি এখানে।\n\nড্রামা স্টোর কিং এর সাথে থাকার জন্য ধন্যবাদ।")
+        except:
+            # ভিডিও না হলে ডকুমেন্ট হিসেবে পাঠাবে
+            try:
+                bot.send_document(m.chat.id, file_id, caption="🎬 আপনার ফাইলটি এখানে।\n\nড্রামা স্টোর কিং এর সাথে থাকার জন্য ধন্যবাদ।")
+            except:
+                bot.reply_to(m, "❌ দুঃখিত, ফাইলটি খুঁজে পাওয়া যায়নি।")
+    else:
+        bot.reply_to(m, "👋 হ্যালো! মুভি এড করতে /movie ব্যবহার করুন।")
 
 @bot.message_handler(commands=['movie'])
 def start_adding_movie(m):
@@ -541,9 +610,9 @@ def start_adding_movie(m):
             "views": 0, 
             "status": "AWAITING_POSTER"
         }
-        bot.reply_to(m, f"🎬 মুভি/ড্রামা: *{parts[0].strip()}*\n📂 ক্যাটাগরি: *{parts[1].strip()}*\n\nএখন এই মুভির একটি *পোস্টার (ফটো)* অথবা সরাসরি লিঙ্কে ইমেজের লিঙ্ক পাঠান।", parse_mode="Markdown")
+        bot.reply_to(m, f"🎬 ড্রামা: *{parts[0].strip()}*\n📂 ক্যাটাগরি: *{parts[1].strip()}*\n\nএখন পোস্টার পাঠান।", parse_mode="Markdown")
     except:
-        bot.reply_to(m, "⚠️ ভুল ফরম্যাট! \nনিয়ম: `/movie নাম, ক্যাটাগরি`", parse_mode="Markdown")
+        bot.reply_to(m, "⚠️ নিয়ম: `/movie নাম, ক্যাটাগরি`", parse_mode="Markdown")
 
 @bot.message_handler(content_types=['photo', 'text', 'video', 'document'])
 def handle_bot_inputs(m):
@@ -551,54 +620,33 @@ def handle_bot_inputs(m):
     if cid not in user_states: return
 
     state = user_states[cid]
-
-    # পোস্টার আপলোড পার্ট
     if state["status"] == "AWAITING_POSTER":
         if m.content_type == 'photo':
-            file_info = bot.get_file(m.photo[-1].file_id)
-            poster_url = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
-            user_states[cid]["poster"] = poster_url
+            file_id = m.photo[-1].file_id
+            user_states[cid]["poster"] = bot.get_file_url(file_id)
         elif m.content_type == 'text':
             user_states[cid]["poster"] = m.text
         else:
-            bot.reply_to(m, "❌ দয়া করে একটি ফটো অথবা ইমেজ লিঙ্ক দিন!")
+            bot.reply_to(m, "❌ ফটো বা লিঙ্ক দিন!")
             return
         
         user_states[cid]["status"] = "AWAITING_EPISODES"
-        bot.reply_to(m, "✅ পোস্টার যুক্ত হয়েছে!\nএখন এক এক করে মুভি ফাইলগুলো (ভিডিও বা ডকুমেন্ট) পাঠান। সব ফাইল পাঠানো শেষ হলে /Done কমান্ড দিন।")
+        bot.reply_to(m, "✅ পোস্টার যুক্ত হয়েছে! এখন ফাইলগুলো পাঠান এবং শেষে /Done দিন।")
 
-    # এপিসোড ফাইল পার্ট
     elif state["status"] == "AWAITING_EPISODES":
         if m.content_type == 'text' and m.text == '/Done':
-            if len(user_states[cid]["episodes"]) == 0:
-                bot.reply_to(m, "❌ অন্তত একটি ফাইল তো পাঠান!")
+            if not user_states[cid]["episodes"]:
+                bot.reply_to(m, "❌ কোনো ফাইল দেননি!")
                 return
-            
             final_data = user_states[cid].copy()
             del final_data["status"]
             mongo.db.movies.insert_one(final_data)
             del user_states[cid]
-            bot.reply_to(m, "🚀 মুভিটি সফলভাবে ওয়েবসাইটে পাবলিশ হয়েছে!")
-            
+            bot.reply_to(m, "🚀 ড্রামাটি পাবলিশ হয়েছে!")
         elif m.content_type in ['video', 'document']:
             fid = m.video.file_id if m.content_type == 'video' else m.document.file_id
             user_states[cid]['episodes'].append(fid)
-            bot.reply_to(m, f"✅ এপিসোড {len(user_states[cid]['episodes']):02d} যুক্ত হয়েছে।\nআরও ফাইল থাকলে পাঠান নতুবা /Done লিখুন।")
-
-@bot.message_handler(commands=['start'])
-def handle_bot_start(m):
-    args = m.text.split()
-    if len(args) > 1:
-        file_id = args[1]
-        bot.send_chat_action(m.chat.id, 'upload_document')
-        try:
-            bot.send_document(m.chat.id, file_id, caption="🎬 আপনার ফাইলটি এখানে। ড্রামা স্টোর কিং এর সাথে থাকার জন্য ধন্যবাদ।")
-        except:
-            bot.send_video(m.chat.id, file_id, caption="🎬 আপনার ফাইলটি এখানে। ড্রামা স্টোর কিং এর সাথে থাকার জন্য ধন্যবাদ।")
-    else:
-        bot.reply_to(m, "👋 হ্যালো! মুভি এড করতে /movie ব্যবহার করুন।")
-
-# --- ওয়েব হুক ও প্রোডাকশন রান ---
+            bot.reply_to(m, f"✅ এপিসোড {len(user_states[cid]['episodes'])} যুক্ত হয়েছে।")
 
 @app.route('/' + TOKEN, methods=['POST'])
 def webhook_receiver():
@@ -611,9 +659,6 @@ def setup_webhook():
     success = bot.set_webhook(url=BASE_URL + '/' + TOKEN)
     return "<h1>Webhook Connection Successfull!</h1>" if success else "<h1>Webhook Failed!</h1>"
 
-# কোয়েব বা ভার্সেল এর জন্য হ্যান্ডলার
 handler = app
-
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
