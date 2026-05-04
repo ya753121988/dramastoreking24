@@ -9,7 +9,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 
 # --- কনফিগারেশন ---
-TOKEN = "8655043839:AAE_qIxO1QAORFsSJzpIMybe5a-wWVeDfL4" 
+TOKEN = "8655043839:AAFTUxq56taWUPU9uXRKuL7iyKLXRvk-WqM" 
 BOT_USERNAME = "dramastorkingsbot" 
 MONGO_URI = "mongodb+srv://drama:drama@cluster0.sa4kvgu.mongodb.net/DramaStoreDB?retryWrites=true&w=majority&appName=Cluster0"
 BASE_URL = "https://indirect-meris-yeasinvai-95120fc6.koyeb.app" 
@@ -412,11 +412,11 @@ def movie_detail(m_id):
         <div class="card" style="max-width:100%; text-align:left; border-top:4px solid var(--primary);">
             <h4 style="margin-bottom:20px; border-bottom:1px solid #333; padding-bottom:10px;">ডাউনলোড এবং ওয়াচ লিঙ্ক:</h4>
             <div class="episode-list">
-                {{% for fid in movie.episodes %}}
-                <div class="ep-button" onclick="processAd('{{{{ fid }}}}_idx_{{{{ loop.index0 }}}}', '{{{{ fid }}}}')">
+                {{% for msg_id in movie.episodes %}}
+                <div class="ep-button" onclick="processAd('{{{{ msg_id }}}}_idx_{{{{ loop.index0 }}}}', '{{{{ msg_id }}}}')">
                     <div>
                         🎬 Episode {{{{ "%02d" % (loop.index0 + 1) }}}}
-                        <span class="ep-status" id="status_{{{{ fid }}}}_idx_{{{{ loop.index0 }}}}">লোড হচ্ছে...</span>
+                        <span class="ep-status" id="status_{{{{ msg_id }}}}_idx_{{{{ loop.index0 }}}}">লোড হচ্ছে...</span>
                     </div>
                     <i class="fas fa-download"></i>
                 </div>
@@ -648,17 +648,22 @@ def logout():
 
 @bot.message_handler(commands=['start'])
 def handle_bot_start(m):
-    command_parts = m.text.split()
-    if len(command_parts) > 1:
-        file_id = command_parts[1].replace('file_', '')
-        bot.send_chat_action(m.chat.id, 'upload_document')
+    text = m.text
+    settings = get_site_settings()
+    channel_id = settings.get('file_channel')
+    
+    if "file_" in text:
         try:
-            bot.send_video(m.chat.id, file_id, caption="🎬 ড্রামা স্টোর কিং এর সাথে থাকার জন্য ধন্যবাদ।")
-        except:
-            try:
-                bot.send_document(m.chat.id, file_id, caption="🎬 ড্রামা স্টোর কিং এর সাথে থাকার জন্য ধন্যবাদ।")
-            except:
-                bot.reply_to(m, "❌ ফাইলটি পাওয়া যায়নি।")
+            # লিঙ্ক থেকে Message ID বের করা (যেমন: file_12 থেকে 12)
+            msg_id = int(text.split("file_")[1])
+            if not channel_id:
+                bot.reply_to(m, "❌ স্টোরেজ চ্যানেল সেট করা নেই!")
+                return
+            
+            # সরাসরি চ্যানেল থেকে মেসেজ কপি করে পাঠানো
+            bot.copy_message(m.chat.id, channel_id, msg_id, caption="🎬 ড্রামা স্টোর কিং এর সাথে থাকার জন্য ধন্যবাদ।")
+        except Exception as e:
+            bot.reply_to(m, "❌ ফাইলটি পাওয়া যায়নি অথবা চ্যানেল থেকে ডিলিট করা হয়েছে।")
     else:
         bot.reply_to(m, "👋 স্বাগতম! মুভি এড করতে /movie নাম, ক্যাটাগরি লিখুন।")
 
@@ -682,7 +687,6 @@ def handle_bot_inputs(m):
 
     if state["status"] == "AWAITING_POSTER":
         if m.content_type == 'photo':
-            user_states[cid]["poster_id"] = m.photo[-1].file_id
             file_info = bot.get_file(m.photo[-1].file_id)
             user_states[cid]["poster"] = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
             user_states[cid]["status"] = "AWAITING_EPISODES"
@@ -703,18 +707,19 @@ def handle_bot_inputs(m):
                 bot.reply_to(m, "❌ এডমিন প্যানেলে স্টোরেজ চ্যানেল আইডি সেট করা নেই।")
                 return
             try:
+                # চ্যানেলে পাঠানো এবং Message ID টি সেভ করা
                 if m.content_type == 'video':
                     sent = bot.send_video(channel_id, m.video.file_id)
-                    fid = sent.video.file_id
                 else:
                     sent = bot.send_document(channel_id, m.document.file_id)
-                    fid = sent.document.file_id
-                user_states[cid]['episodes'].append(fid)
-                bot.reply_to(m, f"✅ এপিসোড {len(user_states[cid]['episodes'])} যুক্ত হয়েছে। আরও থাকলে পাঠান নতুবা /Done দিন।")
+                
+                # আমরা এখানে Message ID সেভ করছি (যা একটি ছোট সংখ্যা হবে)
+                user_states[cid]['episodes'].append(sent.message_id)
+                bot.reply_to(m, f"✅ এপিসোড {len(user_states[cid]['episodes'])} যুক্ত হয়েছে (ID: {sent.message_id})। আরও থাকলে পাঠান নতুবা /Done দিন।")
             except Exception as e:
                 bot.reply_to(m, f"❌ এরর: {str(e)}\nনিশ্চিত করুন বট চ্যানেলে এডমিন আছে।")
 
-# --- Webhook receiver (Dedicated Endpoint) ---
+# --- Webhook receiver ---
 
 @app.route('/tg-webhook', methods=['POST'])
 def tg_webhook_receiver():
