@@ -9,7 +9,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 
 # --- কনফিগারেশন ---
-TOKEN = "8655043839:AAFTUxq56taWUPU9uXRKuL7iyKLXRvk-WqM" 
+TOKEN = "8655043839:AAE_qIxO1QAORFsSJzpIMybe5a-wWVeDfL4" 
 BOT_USERNAME = "dramastorkingsbot" 
 MONGO_URI = "mongodb+srv://drama:drama@cluster0.sa4kvgu.mongodb.net/DramaStoreDB?retryWrites=true&w=majority&appName=Cluster0"
 BASE_URL = "https://indirect-meris-yeasinvai-95120fc6.koyeb.app" 
