@@ -9,10 +9,10 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 
 # --- কনফিগারেশন ---
-TOKEN = "8655043839:AAFTUxq56taUPU9uXRKuL7iyKLXRvk-WqM" 
+# আপনার লগ অনুযায়ী টোকেনটি ফিক্স করা হয়েছে (taUP এর বদলে taWUP)
+TOKEN = "8655043839:AAFTUxq56taWUPU9uXRKuL7iyKLXRvk-WqM" 
 BOT_USERNAME = "dramastorkingsbot" 
 MONGO_URI = "mongodb+srv://drama:drama@cluster0.sa4kvgu.mongodb.net/DramaStoreDB?retryWrites=true&w=majority&appName=Cluster0"
-# Koyeb এর ডোমেইনটি ফিক্স করা হয়েছে
 BASE_URL = "https://indirect-meris-yeasinvai-95120fc6.koyeb.app" 
 
 app = Flask(__name__)
@@ -314,8 +314,10 @@ def render_full_page(body_html, **kwargs):
 
 # --- সাইট লজিক রাউটস ---
 
-@app.route('/')
+# Koyeb Health checks (POST /) বন্ধ করতে methods=['GET', 'POST'] যোগ করা হয়েছে
+@app.route('/', methods=['GET', 'POST'])
 def index():
+    if request.method == 'POST': return "OK", 200 # Health check fix
     if 'user_id' not in session: return redirect(url_for('login'))
     
     page = int(request.args.get('page', 1))
@@ -650,7 +652,6 @@ def logout():
 def handle_bot_start(m):
     command_parts = m.text.split()
     if len(command_parts) > 1:
-        # ফাইল আইডি থেকে 'file_' প্রিফিক্স সরানো
         file_id = command_parts[1].replace('file_', '')
         bot.send_chat_action(m.chat.id, 'upload_document')
         try:
@@ -683,9 +684,7 @@ def handle_bot_inputs(m):
 
     if state["status"] == "AWAITING_POSTER":
         if m.content_type == 'photo':
-            # ফটো আইডি সেভ করা হচ্ছে
             user_states[cid]["poster_id"] = m.photo[-1].file_id
-            # লিঙ্কের জন্য ফাইল পাথ বের করা
             file_info = bot.get_file(m.photo[-1].file_id)
             user_states[cid]["poster"] = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
             user_states[cid]["status"] = "AWAITING_EPISODES"
@@ -706,7 +705,6 @@ def handle_bot_inputs(m):
                 bot.reply_to(m, "❌ এডমিন প্যানেলে স্টোরেজ চ্যানেল আইডি সেট করা নেই।")
                 return
             try:
-                # ফাইল চ্যানেলে পাঠিয়ে সেখান থেকে আইডি নেওয়া
                 if m.content_type == 'video':
                     sent = bot.send_video(channel_id, m.video.file_id)
                     fid = sent.video.file_id
@@ -731,7 +729,7 @@ def webhook_receiver():
 
 @app.route('/set_webhook')
 def setup_webhook():
-    bot.remove_webhook() # আগের কানেকশন পরিষ্কার করা
+    bot.remove_webhook() 
     success = bot.set_webhook(url=BASE_URL + '/' + TOKEN)
     return "<h1>Webhook Connection Successfull!</h1>" if success else "<h1>Webhook Failed!</h1>"
 
