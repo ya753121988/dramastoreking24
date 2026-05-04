@@ -17,9 +17,9 @@ MONGO_URI = "mongodb+srv://drama:drama@cluster0.sa4kvgu.mongodb.net/DramaStoreDB
 BASE_URL = "https://indirect-meris-yeasinvai-95120fc6.koyeb.app" 
 
 # --- নতুন যুক্ত করা কনফিগারেশন ---
-API_ID = "YOUR_API_ID" # আপনার এপিআই আইডি এখানে দিন
-API_HASH = "YOUR_API_HASH" # আপনার এপিআই হ্যাশ এখানে দিন
-OWNER_ID = 6875955684 # এখানে আপনার টেলিগ্রাম আইডি (শুধু আপনিই মুভি এড করতে পারবেন)
+API_ID = "29904834" # আপনার এপিআই আইডি এখানে দিন
+API_HASH = "8b4fd9ef578af114502feeafa2d31938" # আপনার এপিআই হ্যাশ এখানে দিন
+OWNER_ID = 7120801813 # এখানে আপনার টেলিগ্রাম আইডি (শুধু আপনিই মুভি এড করতে পারবেন)
 
 app = Flask(__name__)
 app.secret_key = "ULTRA_FINAL_FULL_MEGA_CODE_VERSION_PRO"
