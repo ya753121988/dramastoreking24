@@ -382,7 +382,7 @@ def get_site_settings():
                 "monetag_id": "10351894", "ad_limit": 2, 
                 "lock_duration": 30, "file_channel": "",
                 "auto_delete_time": 5, "protect_content": "No",
-                "notification_channel": "" # নতুন ঘর
+                "notification_channel": "" 
             }
             mongo.db.settings.insert_one({"type": "config", **default})
             return default
@@ -1143,10 +1143,8 @@ def logout():
 
 # --- টেলিগ্রাম বট হ্যান্ডলার ---
 
-# আপনার কোডে OWNER_ID নিচেও একবার ছিল, আমি সেটি উপরেরটার সাথে কনসিস্টেন্ট রাখার জন্য শুধু ফিক্স করেছি।
 API_ID = "29904834" 
 API_HASH = "8b4fd9ef578af114502feeafa2d31938" 
-# OWNER_ID = 7120801813 (এটি উপরে আছে, তাই নিচে পুনরায় দিলে অনেক সময় সমস্যা করে, তবুও আমি রাখছি)
 
 @bot.message_handler(commands=['start'])
 def handle_bot_start(m):
@@ -1158,7 +1156,7 @@ def handle_bot_start(m):
         try:
             msg_id = int(text.split("file_")[1])
             if not channel_id:
-                bot.reply_to(m, "❌ স্টোরেজ চ্যানেল সেট করা নেই!")
+                bot.send_message(m.chat.id, "❌ স্টোরেজ চ্যানেল সেট করা নেই!")
                 return
             
             movie = mongo.db.movies.find_one({"episodes": msg_id})
@@ -1178,97 +1176,93 @@ def handle_bot_start(m):
             threading.Thread(target=delete_msg, args=(m.chat.id, sent_msg.message_id, int(settings.get('auto_delete_time', 5)))).start()
 
         except Exception as e:
-            bot.reply_to(m, "❌ ফাইলটি পাওয়া যায়নি।")
+            bot.send_message(m.chat.id, "❌ ফাইলটি পাওয়া যায়নি।")
     else:
         # স্টার্ট বাটনে ইউজার তথ্য এবং ওয়েবসাইট বাটন
         markup = telebot.types.InlineKeyboardMarkup()
         markup.add(telebot.types.InlineKeyboardButton("🌐 Visit Website", url=BASE_URL))
         
         info = f"👤 প্রোফাইল তথ্য:\n📝 নাম: {m.from_user.first_name} {m.from_user.last_name or ''}\n🆔 আইডি: {m.from_user.id}\n🔗 ইউজারনেম: @{m.from_user.username or 'N/A'}\n\nস্বাগতম! মুভি দেখতে ওয়েবসাইট ভিজিট করুন।"
-        bot.reply_to(m, info, reply_markup=markup)
+        # রিপ্লাই এরর ফিক্স করতে send_message ব্যবহার করা হয়েছে
+        bot.send_message(m.chat.id, info, reply_markup=markup)
 
 @bot.message_handler(commands=['movie'])
 def start_adding_movie(m):
-    # ফিক্স: আইডি চেক করার সময় int() ব্যবহার করা নিশ্চিত করা হয়েছে
+    # স্ট্রিক্ট সিকিউরিটি চেক (int কাস্ট করা হয়েছে)
     if int(m.from_user.id) != int(OWNER_ID):
-        bot.reply_to(m, f"❌ আপনি ওনার নন! আপনার আইডি: {m.from_user.id}")
+        bot.send_message(m.chat.id, f"❌ আপনি ওনার নন! আপনার আইডি: {m.from_user.id}")
         return
     try:
-        # মেইন লজিক যা আপনার কোডে ছিল
         parts = m.text.split('/movie ')[1].split(',')
         if len(parts) < 2: raise Exception()
         user_states[m.chat.id] = {"title": parts[0].strip(), "category": parts[1].strip(), "episodes": [], "views": 0, "status": "AWAITING_POSTER"}
-        bot.reply_to(m, "📸 মুভির পোস্টার ফটো পাঠান।")
+        bot.send_message(m.chat.id, "📸 মুভির পোস্টার ফটো পাঠান।")
     except:
-        bot.reply_to(m, "⚠️ সঠিক নিয়ম: `/movie নাম, ক্যাটাগরি`", parse_mode="Markdown")
+        bot.send_message(m.chat.id, "⚠️ সঠিক নিয়ম: `/movie নাম, ক্যাটাগরি`", parse_mode="Markdown")
 
 @bot.message_handler(content_types=['photo', 'text', 'video', 'document'])
 def handle_bot_inputs(m):
     cid = m.chat.id
     if cid not in user_states: return
-    # ফিক্স: ওনার আইডি চেক
+    
+    # ওনার আইডি চেক
     if int(m.from_user.id) != int(OWNER_ID): return 
     
     state = user_states[cid]
     settings = get_site_settings()
     channel_id = settings.get('file_channel')
 
-    if state["status"] == "AWAITING_POSTER":
-        if m.content_type == 'photo':
-            file_info = bot.get_file(m.photo[-1].file_id)
-            user_states[cid]["poster"] = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
-            user_states[cid]["status"] = "AWAITING_EPISODES"
-            bot.reply_to(m, "✅ পোস্টার এড হয়েছে। ভিডিও ফাইল পাঠান এবং সব শেষে /Done দিন।")
-        else:
-            bot.reply_to(m, "❌ ফটো পাঠান।")
-
-    elif state["status"] == "AWAITING_EPISODES":
-        if m.text == '/Done':
+    # DONE চেক (বড় ছোট সব কাজ করবে)
+    if m.text and m.text.strip().lower() == '/done':
+        if state["status"] == "AWAITING_EPISODES":
             if not state["episodes"]:
-                bot.reply_to(m, "❌ কোনো এপিসোড নেই।")
+                bot.send_message(cid, "❌ কোনো এপিসোড নেই।")
                 return
             
             res = mongo.db.movies.insert_one(user_states[cid])
             movie_id = str(res.inserted_id)
             
-            # --- নোটিফিকেশন চ্যানেল ফিক্স ---
+            # নোটিফিকেশন চ্যানেলে পাঠানো
             notif_ch = settings.get('notification_channel')
             if notif_ch:
                 try:
-                    # টেলিগ্রাম চ্যানেল আইডি অবশ্যই integer হতে হয় যদি তা স্ট্রিং আকারে থাকে
-                    if str(notif_ch).startswith("-100") or str(notif_ch).startswith("-"):
-                        final_notif_ch = int(notif_ch)
-                    else:
-                        final_notif_ch = notif_ch
-                        
+                    final_ch = int(notif_ch) if str(notif_ch).startswith('-') else notif_ch
                     markup = telebot.types.InlineKeyboardMarkup()
                     markup.add(telebot.types.InlineKeyboardButton("👁 Watch Movie", url=f"{BASE_URL}/movie/{movie_id}"))
                     msg = f"🔥 নতুন মুভি আপলোড হয়েছে!\n\n🎬 নাম: {state['title']}\n📁 ক্যাটাগরি: {state['category']}\n🎞 এপিসোড সংখ্যা: {len(state['episodes'])}\n\nনিচের বাটনে ক্লিক করে মুভিটি দেখুন।"
-                    bot.send_photo(final_notif_ch, state['poster'], caption=msg, reply_markup=markup)
-                except Exception as e:
-                    # এরর লগ করার জন্য
-                    print(f"Notification Error: {e}")
+                    bot.send_photo(final_ch, state['poster'], caption=msg, reply_markup=markup)
+                except:
+                    pass
                 
             del user_states[cid]
-            bot.reply_to(m, "🚀 ওয়েবসাইট ও চ্যানেলে পাবলিশ হয়েছে!")
-            
-        elif m.content_type in ['video', 'document']:
+            bot.send_message(cid, "🚀 ওয়েবসাইট ও চ্যানেলে পাবলিশ হয়েছে!")
+            return
+
+    if state["status"] == "AWAITING_POSTER":
+        if m.content_type == 'photo':
+            file_info = bot.get_file(m.photo[-1].file_id)
+            user_states[cid]["poster"] = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
+            user_states[cid]["status"] = "AWAITING_EPISODES"
+            bot.send_message(cid, "✅ পোস্টার এড হয়েছে। ভিডিও ফাইল পাঠান এবং সব শেষে /Done দিন।")
+        else:
+            bot.send_message(cid, "❌ ফটো পাঠান।")
+
+    elif state["status"] == "AWAITING_EPISODES":
+        if m.content_type in ['video', 'document']:
             if not channel_id:
-                bot.reply_to(m, "❌ স্টোরেজ চ্যানেল আইডি নেই।")
+                bot.send_message(cid, "❌ চ্যানেল আইডি নেই।")
                 return
             try:
-                # চ্যানেল আইডি ইন্টিজার হওয়া প্রয়োজন
-                storage_ch = int(channel_id) if str(channel_id).startswith("-") else channel_id
-                
+                storage_ch = int(channel_id) if str(channel_id).startswith('-') else channel_id
                 if m.content_type == 'video':
                     sent = bot.send_video(storage_ch, m.video.file_id)
                 else:
                     sent = bot.send_document(storage_ch, m.document.file_id)
                 
                 user_states[cid]['episodes'].append(sent.message_id)
-                bot.reply_to(m, f"✅ এপিসোড {len(user_states[cid]['episodes'])} যুক্ত হয়েছে।")
+                bot.send_message(cid, f"✅ এপিসোড {len(user_states[cid]['episodes'])} যুক্ত হয়েছে।")
             except Exception as e:
-                bot.reply_to(m, f"❌ এরর: {str(e)}")
+                bot.send_message(cid, f"❌ এরর: {str(e)}")
 
 # --- Webhook receiver ---
 
