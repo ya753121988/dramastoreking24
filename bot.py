@@ -1,6 +1,7 @@
 import os
 import telebot
 import logging
+import datetime  # এখানে datetime ইমপোর্ট করা হয়েছে যা আগে মিসিং ছিল
 from flask import Flask, request, redirect, url_for, session, flash, render_template_string, jsonify
 from flask_pymongo import PyMongo
 from bson.objectid import ObjectId
@@ -16,6 +17,9 @@ BASE_URL = "https://indirect-meris-yeasinvai-95120fc6.koyeb.app"
 app = Flask(__name__)
 app.secret_key = "ULTRA_FINAL_FULL_MEGA_CODE_VERSION_PRO"
 app.config["MONGO_URI"] = MONGO_URI
+# সেশন লাইফটাইম সেট করা (লগিন ধরে রাখার জন্য)
+app.permanent_session_lifetime = datetime.timedelta(days=7)
+
 mongo = PyMongo(app)
 bot = telebot.TeleBot(TOKEN, threaded=False)
 
@@ -368,7 +372,6 @@ def movie_detail(m_id):
         </div>
     </div>
 
-    <!-- Monetag Integration -->
     <script src='//libtl.com/sdk.js' data-zone='{{{{ settings.monetag_id }}}}' data-sdk='show_{{{{ settings.monetag_id }}}}'></script>
     
     <script>
@@ -378,7 +381,6 @@ def movie_detail(m_id):
             let currentCount = parseInt(sessionStorage.getItem(sessionKey)) || 0;
             
             if (currentCount < limit) {{
-                // Show Monetag Ad
                 if (typeof window['show_' + {{{{ settings.monetag_id }}}}] === 'function') {{
                     window['show_' + {{{{ settings.monetag_id }}}}]();
                 }}
@@ -449,7 +451,8 @@ def register():
             role = "admin" if mongo.db.users.count_documents({}) == 0 else "user"
             mongo.db.users.insert_one({
                 "fname": fname, "lname": lname, "number": num, 
-                "password": generate_password_hash(pw), "role": role, "joined": datetime.datetime.now()
+                "password": generate_password_hash(pw), "role": role, 
+                "joined": datetime.datetime.now() # datetime ব্যবহার
             })
             flash("রেজিস্ট্রেশন সফল! এখন লগিন করুন।")
             return redirect('/login')
@@ -497,6 +500,8 @@ def login():
 def profile():
     if 'user_id' not in session: return redirect('/login')
     u = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
+    if not u: return redirect('/logout')
+    
     html = f"""
     <div class="card" style="text-align:center;">
         <div style="width:100px; height:100px; background:var(--primary); border-radius:50%; margin:auto; display:flex; justify-content:center; align-items:center; font-size:40px; margin-bottom:20px;">
@@ -515,7 +520,7 @@ def logout():
     session.clear()
     return redirect('/login')
 
-# --- টেলিগ্রাম বট (অ্যাডভান্সড ফাইল স্টোর সিস্টেম) ---
+# --- টেলিগ্রাম বট ---
 
 @bot.message_handler(commands=['movie'])
 def start_adding_movie(m):
@@ -541,7 +546,6 @@ def handle_bot_inputs(m):
 
     state = user_states[cid]
 
-    # পোস্টার আপলোড পার্ট
     if state["status"] == "AWAITING_POSTER":
         if m.content_type == 'photo':
             file_info = bot.get_file(m.photo[-1].file_id)
@@ -554,9 +558,8 @@ def handle_bot_inputs(m):
             return
         
         user_states[cid]["status"] = "AWAITING_EPISODES"
-        bot.reply_to(m, "✅ পোস্টার যুক্ত হয়েছে!\nএখন এক এক করে মুভি ফাইলগুলো (ভিডিও বা ডকুমেন্ট) পাঠান। সব ফাইল পাঠানো শেষ হলে /Done কমান্ড দিন।")
+        bot.reply_to(m, "✅ পোস্টার যুক্ত হয়েছে!\nএখন এক এক করে মুভি ফাইলগুলো পাঠান। শেষ হলে /Done কমান্ড দিন।")
 
-    # এপিসোড ফাইল পার্ট
     elif state["status"] == "AWAITING_EPISODES":
         if m.content_type == 'text' and m.text == '/Done':
             if len(user_states[cid]["episodes"]) == 0:
@@ -587,23 +590,25 @@ def handle_bot_start(m):
     else:
         bot.reply_to(m, "👋 হ্যালো! মুভি এড করতে /movie ব্যবহার করুন।")
 
-# --- ওয়েব হুক ও প্রোডাকশন রান ---
+# --- ওয়েব হুক ---
 
 @app.route('/' + TOKEN, methods=['POST'])
 def webhook_receiver():
-    update = telebot.types.Update.de_json(request.get_data().decode('utf-8'))
-    bot.process_new_updates([update])
-    return "OK", 200
+    if request.headers.get('content-type') == 'application/json':
+        json_string = request.get_data().decode('utf-8')
+        update = telebot.types.Update.de_json(json_string)
+        bot.process_new_updates([update])
+        return "OK", 200
+    return "Forbidden", 403
 
 @app.route('/set_webhook')
 def setup_webhook():
     success = bot.set_webhook(url=BASE_URL + '/' + TOKEN)
     return "<h1>Webhook Connection Successfull!</h1>" if success else "<h1>Webhook Failed!</h1>"
 
-# কোয়েব বা ভার্সেল এর জন্য হ্যান্ডলার
+# কোয়েব এর জন্য হ্যান্ডলার
 handler = app
 
 if __name__ == '__main__':
-    import datetime
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
