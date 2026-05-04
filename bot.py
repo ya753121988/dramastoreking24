@@ -343,6 +343,7 @@ def render_full_page(body_html, **kwargs):
     if 'user_id' in session:
         user_data = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
     
+    # FIX: Use string concatenation instead of f-string for HTML to avoid Jinja bracket conflict
     full_html = """
     <!DOCTYPE html>
     <html lang="bn">
@@ -465,7 +466,6 @@ def tasks():
     if 'user_id' not in session: return redirect('/login')
     tasks = list(mongo.db.tasks.find())
     
-    # ইউজার কোনটা শেষ করেছে তা ট্র্যাক করা (অপশনাল)
     user = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
     completed = user.get('completed_tasks', [])
 
@@ -489,7 +489,6 @@ def tasks():
     </div>
     {% endfor %}
 
-    <!-- Monetag Script Holder -->
     <div id="ad-container"></div>
 
     <script>
@@ -502,7 +501,6 @@ def tasks():
                     div.innerHTML = data.script;
                     document.body.appendChild(div);
                     
-                    // এখানে একটি ফেক ডিলে দিয়ে কয়েন অ্যাড করা হচ্ছে
                     setTimeout(() => {
                         claimReward(taskId);
                     }, 5000);
@@ -582,7 +580,6 @@ def purchase_premium(oid):
         days = int(offer['days'])
         now = datetime.datetime.now()
         
-        # বর্তমান প্রিমিয়ামের সাথে যোগ করা
         current_expiry = user.get('premium_until')
         if current_expiry and current_expiry > now:
             new_expiry = current_expiry + datetime.timedelta(days=days)
@@ -634,10 +631,10 @@ def movie_detail(m_id):
     )
     if not movie: return redirect('/')
     
-    # ইউজার প্রিমিয়াম কিনা চেক
     user = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
     is_premium = user.get('premium_until') and user['premium_until'] > datetime.datetime.now()
 
+    # FIX: Concatenation to avoid Jinja/Python brace collision
     content = """
     <div class="back-btn-container">
         <a href="/" onclick="showLoader();" class="back-btn"><i class="fas fa-arrow-left"></i> ব্যাক টু হোম</a>
@@ -667,7 +664,6 @@ def movie_detail(m_id):
         </div>
     </div>
 
-    <!-- Monetag Integration -->
     <script src='//libtl.com/sdk.js' data-zone='{{ settings.monetag_id }}' data-sdk='show_{{ settings.monetag_id }}'></script>
     
     <script>
@@ -749,6 +745,9 @@ def admin():
     if session.get('role') != 'admin': 
         flash("আপনার এডমিন অ্যাক্সেস নেই!")
         return redirect('/')
+    
+    # FIX: MUST fetch settings here to use it in the template call below
+    settings = get_site_settings()
     
     search_q = request.args.get('search_movie', '')
     manage_movies = list(mongo.db.movies.find({"title": {"$regex": search_q, "$options": "i"}}).sort("_id", -1).limit(50))
@@ -958,6 +957,7 @@ def login():
 def profile():
     if 'user_id' not in session: return redirect('/login')
     u = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
+    # FIX: Regular string for Jinja
     html = """
     <div class="card" style="text-align:center;">
         <div style="width:100px; height:100px; background:var(--primary); border-radius:50%; margin:auto; display:flex; justify-content:center; align-items:center; font-size:40px; margin-bottom:20px;">
