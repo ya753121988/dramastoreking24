@@ -1,7 +1,7 @@
 import os
 import telebot
 import logging
-import datetime # এটি আগে মিসিং ছিল যার জন্য ইরোর আসত
+import datetime
 from flask import Flask, request, redirect, url_for, session, flash, render_template_string, jsonify
 from flask_pymongo import PyMongo
 from bson.objectid import ObjectId
@@ -11,24 +11,21 @@ from functools import wraps
 # --- কনফিগারেশন ---
 TOKEN = "8655043839:AAFTUxq56taUPU9uXRKuL7iyKLXRvk-WqM" 
 BOT_USERNAME = "dramastorkingsbot" 
-# ডাটাবেজ নাম 'DramaStoreDB' যুক্ত করা হয়েছে যাতে ডাটা মিসিং না হয়
 MONGO_URI = "mongodb+srv://drama:drama@cluster0.sa4kvgu.mongodb.net/DramaStoreDB?retryWrites=true&w=majority&appName=Cluster0"
 BASE_URL = "https://indirect-meris-yeasinvai-95120fc6.app" 
 
 app = Flask(__name__)
 app.secret_key = "ULTRA_FINAL_FULL_MEGA_CODE_VERSION_PRO"
 app.config["MONGO_URI"] = MONGO_URI
-# সেশন লাইফটাইম বাড়ানো হয়েছে
 app.permanent_session_lifetime = datetime.timedelta(days=30)
 
 mongo = PyMongo(app)
 bot = telebot.TeleBot(TOKEN, threaded=False)
 
-# ইউজার স্টেট ট্র্যাকিং (মুভি এড করার জন্য)
+# ইউজার স্টেট ট্র্যাকিং
 user_states = {}
 
 # --- বিস্তারিত প্রিমিয়াম সিএসএস (Design Section) ---
-# আপনার দেওয়া CSS এক বিন্দুও পরিবর্তন করা হয়নি
 FULL_CSS = """
 <style>
     :root { 
@@ -49,7 +46,6 @@ FULL_CSS = """
         overflow-x: hidden;
     }
     
-    /* Loader Animation */
     #loader { 
         display: none; 
         position: fixed; 
@@ -70,7 +66,6 @@ FULL_CSS = """
     }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-    /* Notice Bar */
     .notice-bar { 
         background: var(--primary); 
         padding: 12px; 
@@ -81,7 +76,6 @@ FULL_CSS = """
         box-shadow: 0 2px 10px rgba(0,0,0,0.5);
     }
 
-    /* Navbar */
     .navbar { 
         display: flex; 
         justify-content: space-around; 
@@ -100,9 +94,27 @@ FULL_CSS = """
     .navbar a i { font-size: 18px; }
     .navbar a:hover, .navbar a.active { color: var(--primary); }
 
+    /* Search Bar Design */
+    .search-container {
+        padding: 15px 20px;
+        max-width: 1200px;
+        margin: auto;
+    }
+    .search-form {
+        display: flex;
+        gap: 10px;
+    }
+    .search-form input {
+        margin: 0;
+        flex-grow: 1;
+    }
+    .search-form .btn {
+        width: auto;
+        padding: 0 25px;
+    }
+
     .container { padding: 20px; max-width: 1200px; margin: auto; }
 
-    /* Top Views Slider */
     .section-title { 
         font-size: 22px; 
         font-weight: 800; 
@@ -117,7 +129,6 @@ FULL_CSS = """
         gap: 20px; 
         padding: 10px 0 20px; 
         scrollbar-width: none;
-        -ms-overflow-style: none;
     }
     .slider::-webkit-scrollbar { display: none; }
     .slider-item { 
@@ -138,7 +149,6 @@ FULL_CSS = """
         text-shadow: 2px 2px 10px #000;
     }
 
-    /* Movie Grid Layout */
     .movie-grid { 
         display: grid; 
         grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); 
@@ -162,7 +172,6 @@ FULL_CSS = """
     .movie-info-box { padding: 12px; text-align: center; }
     .movie-info-box h4 { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #fff; }
 
-    /* Pagination Styling */
     .pagination { display: flex; justify-content: center; align-items: center; gap: 15px; margin: 50px 0; }
     .pagination a { 
         padding: 12px 25px; 
@@ -177,7 +186,6 @@ FULL_CSS = """
     .pagination a:hover { background: var(--primary); border-color: var(--primary); }
     .page-info { color: var(--gray); font-size: 14px; }
 
-    /* Forms & Detail Cards */
     .card { background: var(--card-bg); padding: 30px; border-radius: 15px; max-width: 500px; margin: 40px auto; border: 1px solid #222; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
     .card h3 { text-align: center; margin-bottom: 25px; color: var(--primary); font-size: 24px; }
     input { 
@@ -204,7 +212,6 @@ FULL_CSS = """
     }
     .back-btn:hover { color: #fff; transform: translateX(-5px); }
 
-    /* Episode Buttons */
     .episode-list { margin-top: 30px; }
     .ep-button { 
         background: linear-gradient(45deg, #1a1a1a, #222); 
@@ -220,7 +227,14 @@ FULL_CSS = """
     .ep-button:hover { background: #282828; transform: scale(1.02); box-shadow: 0 5px 15px rgba(229, 9, 20, 0.2); }
     .ep-status { font-size: 12px; font-weight: normal; color: var(--gray); margin-top: 5px; display: block; }
     
-    /* Responsive */
+    /* Admin Manage List */
+    .manage-item {
+        display: flex; justify-content: space-between; align-items: center;
+        background: #1a1a1a; padding: 10px 15px; border-radius: 8px; margin-bottom: 10px;
+        border: 1px solid #333;
+    }
+    .del-btn { background: #ff4d4d; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; }
+
     @media (max-width: 600px) {
         .movie-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
         .slider-item { min-width: 250px; }
@@ -242,17 +256,9 @@ def get_site_settings():
     try:
         s = mongo.db.settings.find_one({"type": "config"})
         if not s:
-            # ডিফল্ট lock_duration মিনিট হিসেবে ৩০ রাখা হলো
             default = {"site_name": "PremiumMovie", "notice": "স্বাগতম!", "monetag_id": "10351894", "ad_limit": 2, "lock_duration": 30, "file_channel": ""}
             mongo.db.settings.insert_one({"type": "config", **default})
             return default
-        # যদি lock_duration না থাকে তবে আপডেট করা
-        if "lock_duration" not in s:
-            mongo.db.settings.update_one({"type": "config"}, {"$set": {"lock_duration": 30}})
-            s["lock_duration"] = 30
-        if "file_channel" not in s:
-            mongo.db.settings.update_one({"type": "config"}, {"$set": {"file_channel": ""}})
-            s["file_channel"] = ""
         return s
     except Exception as e:
         return {"site_name": "PremiumMovie", "notice": "Error!", "monetag_id": "10351894", "ad_limit": 2, "lock_duration": 30, "file_channel": ""}
@@ -283,6 +289,13 @@ def render_full_page(body_html, **kwargs):
             {{% if session.get('role') == 'admin' %}}
             <a href="/admin" class="{'active' if current_path == '/admin' else ''}"><i class="fas fa-user-shield"></i> এডমিন</a>
             {{% endif %}}
+        </div>
+
+        <div class="search-container">
+            <form action="/search" method="GET" class="search-form">
+                <input type="text" name="q" placeholder="মুভি বা ড্রামা সার্চ করুন..." value="{{{{ request.args.get('q', '') }}}}" required>
+                <button type="submit" class="btn"><i class="fas fa-search"></i></button>
+            </form>
         </div>
 
         <div class="container">
@@ -346,6 +359,31 @@ def index():
     </div>
     """
     return render_full_page(content, sliders=sliders, movies=movies, page=page)
+
+@app.route('/search')
+def search():
+    if 'user_id' not in session: return redirect(url_for('login'))
+    query = request.args.get('q', '')
+    results = list(mongo.db.movies.find({"title": {"$regex": query, "$options": "i"}}).sort("_id", -1))
+    
+    content = f"""
+    <div class="section-title">সার্চ রেজাল্ট: "{query}"</div>
+    <div class="movie-grid">
+        {{% for m in results %}}
+        <div class="movie-card" onclick="showLoader(); location.href='/movie/{{{{m._id}}}}'">
+            <div class="badge-top-left">{{{{m.category}}}}</div>
+            <img src="{{{{m.poster}}}}">
+            <div class="badge-bottom-right"><i class="fas fa-eye"></i> {{{{m.views}}}}</div>
+            <div class="movie-info-box">
+                <h4>{{{{m.title}}}}</h4>
+            </div>
+        </div>
+        {{% else %}}
+        <p style="text-align:center; grid-column: 1/-1; padding: 50px; color: var(--gray);">দুঃখিত, আপনার সার্চ করা মুভিটি পাওয়া যায়নি।</p>
+        {{% endfor %}}
+    </div>
+    """
+    return render_full_page(content, results=results, query=query)
 
 @app.route('/movie/<m_id>')
 def movie_detail(m_id):
@@ -457,6 +495,9 @@ def admin():
         flash("আপনার এডমিন অ্যাক্সেস নেই!")
         return redirect('/')
     
+    search_q = request.args.get('search_movie', '')
+    manage_movies = list(mongo.db.movies.find({"title": {"$regex": search_q, "$options": "i"}}).sort("_id", -1).limit(50))
+
     if request.method == 'POST':
         action = request.form.get('action')
         if action == 'site':
@@ -473,10 +514,15 @@ def admin():
                 "file_channel": request.form.get('file_channel')
             }}, upsert=True)
             flash("বিজ্ঞাপন ও স্টোরেজ সেটিংস আপডেট হয়েছে!")
+        elif action == 'delete_movie':
+            mid = request.form.get('movie_id')
+            mongo.db.movies.delete_one({"_id": ObjectId(mid)})
+            flash("মুভিটি ডিলিট করা হয়েছে!")
+            return redirect('/admin')
+            
         return redirect('/admin')
 
     content = """
-    <div class="back-btn-container"><a href="/" class="back-btn"><i class="fas fa-arrow-left"></i> ব্যাক টু সাইট</a></div>
     <div class="card">
         <h3><i class="fas fa-cog"></i> জেনারেল সেটিংস</h3>
         <form method="POST">
@@ -490,15 +536,36 @@ def admin():
         <h3><i class="fas fa-ad"></i> মনিটেগ ও লক সেটিংস</h3>
         <form method="POST">
             <input type="hidden" name="action" value="ad">
-            মনিটেগ জোন আইডি (Zone ID): <input name="monetag_id" value="{{ settings.monetag_id }}">
-            এপিসোড প্রতি বিজ্ঞাপনের সংখ্যা: <input type="number" name="ad_limit" value="{{ settings.ad_limit }}">
-            লিঙ্ক কত মিনিট আনলক থাকবে: <input type="number" name="lock_duration" value="{{ settings.lock_duration }}">
-            ফাইল স্টোরেজ চ্যানেল আইডি: <input name="file_channel" value="{{ settings.file_channel }}" placeholder="-100xxxxxxx">
+            মনিটেগ জোন আইডি: <input name="monetag_id" value="{{ settings.monetag_id }}">
+            এপিসোড প্রতি বিজ্ঞাপন: <input type="number" name="ad_limit" value="{{ settings.ad_limit }}">
+            লক ডিউরেশন (মিনিট): <input type="number" name="lock_duration" value="{{ settings.lock_duration }}">
+            ফাইল চ্যানেল আইডি: <input name="file_channel" value="{{ settings.file_channel }}">
             <button class="btn" style="background:green;" type="submit">সেভ অ্যাড সেটিংস</button>
         </form>
     </div>
+
+    <div class="card" style="max-width:800px; border-top:4px solid var(--primary);">
+        <h3><i class="fas fa-tasks"></i> মুভি ম্যানেজমেন্ট (ডিলিট/সার্চ)</h3>
+        <form method="GET" style="display:flex; gap:10px; margin-bottom:20px;">
+            <input name="search_movie" placeholder="মুভি ডিলিট করতে সার্চ করুন..." value="{{ request.args.get('search_movie', '') }}">
+            <button type="submit" class="btn" style="width:100px;">সার্চ</button>
+        </form>
+        
+        <div class="manage-list">
+            {% for m in manage_movies %}
+            <div class="manage-item">
+                <span>{{ m.title }} ({{ m.category }})</span>
+                <form method="POST" style="margin:0;" onsubmit="return confirm('আপনি কি নিশ্চিত যে মুভিটি ডিলিট করবেন?')">
+                    <input type="hidden" name="action" value="delete_movie">
+                    <input type="hidden" name="movie_id" value="{{ m._id }}">
+                    <button class="del-btn" type="submit">ডিলিট</button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
     """
-    return render_full_page(content)
+    return render_full_page(content, manage_movies=manage_movies)
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -577,94 +644,69 @@ def logout():
     session.clear()
     return redirect('/login')
 
-# --- টেলিগ্রাম বট (ফাইল ডেলিভারি সেকশন - ফিক্সড) ---
+# --- টেলিগ্রাম বট ফিক্স ---
 
 @bot.message_handler(commands=['start'])
 def handle_bot_start(m):
     command_parts = m.text.split()
     if len(command_parts) > 1:
-        # 'file_' প্রিফিক্স বাদ দিয়ে আসল আইডি বের করা
         file_id = command_parts[1].replace('file_', '')
         bot.send_chat_action(m.chat.id, 'upload_document')
-        
         try:
-            bot.send_video(m.chat.id, file_id, caption="🎬 আপনার কাঙ্ক্ষিত ভিডিওটি এখানে।\n\nড্রামা স্টোর কিং এর সাথে থাকার জন্য ধন্যবাদ।")
-        except Exception:
+            bot.send_video(m.chat.id, file_id, caption="🎬 ড্রামা স্টোর কিং এর সাথে থাকার জন্য ধন্যবাদ।")
+        except:
             try:
-                bot.send_document(m.chat.id, file_id, caption="🎬 আপনার কাঙ্ক্ষিত ফাইলটি এখানে।\n\nড্রামা স্টোর কিং এর সাথে থাকার জন্য ধন্যবাদ।")
-            except Exception:
-                bot.reply_to(m, "❌ দুঃখিত, ফাইলটি বটের সার্ভারে খুঁজে পাওয়া যায়নি।")
+                bot.send_document(m.chat.id, file_id, caption="🎬 ড্রামা স্টোর কিং এর সাথে থাকার জন্য ধন্যবাদ।")
+            except:
+                bot.reply_to(m, "❌ ফাইলটি পাওয়া যায়নি।")
     else:
-        bot.reply_to(m, "👋 স্বাগতম! মুভি বা ড্রামা এড করতে /movie কমান্ড ব্যবহার করুন।")
+        bot.reply_to(m, "👋 স্বাগতম! মুভি এড করতে /movie নাম, ক্যাটাগরি লিখুন।")
 
 @bot.message_handler(commands=['movie'])
 def start_adding_movie(m):
     try:
         parts = m.text.split('/movie ')[1].split(',')
-        if len(parts) < 2: raise Exception()
-        
-        user_states[m.chat.id] = {
-            "title": parts[0].strip(), 
-            "category": parts[1].strip(), 
-            "episodes": [], 
-            "views": 0, 
-            "status": "AWAITING_POSTER"
-        }
-        bot.reply_to(m, f"🎬 ড্রামা: *{parts[0].strip()}*\n📂 ক্যাটাগরি: *{parts[1].strip()}*\n\nএখন পোস্টার পাঠান।", parse_mode="Markdown")
+        user_states[m.chat.id] = {"title": parts[0].strip(), "category": parts[1].strip(), "episodes": [], "views": 0, "status": "AWAITING_POSTER"}
+        bot.reply_to(m, "📸 পোস্টার ফটো পাঠান।")
     except:
-        bot.reply_to(m, "⚠️ নিয়ম: `/movie নাম, ক্যাটাগরি`", parse_mode="Markdown")
+        bot.reply_to(m, "⚠️ সঠিক নিয়ম: `/movie নাম, ক্যাটাগরি`", parse_mode="Markdown")
 
 @bot.message_handler(content_types=['photo', 'text', 'video', 'document'])
 def handle_bot_inputs(m):
     cid = m.chat.id
     if cid not in user_states: return
-
     state = user_states[cid]
     settings = get_site_settings()
     channel_id = settings.get('file_channel')
 
     if state["status"] == "AWAITING_POSTER":
         if m.content_type == 'photo':
-            file_id = m.photo[-1].file_id
-            user_states[cid]["poster"] = bot.get_file_url(file_id)
-        elif m.content_type == 'text':
-            user_states[cid]["poster"] = m.text
+            user_states[cid]["poster"] = bot.get_file_url(m.photo[-1].file_id)
+            user_states[cid]["status"] = "AWAITING_EPISODES"
+            bot.reply_to(m, "✅ পোস্টার এড হয়েছে। এখন ভিডিও ফাইল পাঠান এবং শেষে /Done দিন।")
         else:
-            bot.reply_to(m, "❌ ফটো বা লিঙ্ক দিন!")
-            return
-        
-        user_states[cid]["status"] = "AWAITING_EPISODES"
-        bot.reply_to(m, "✅ পোস্টার যুক্ত হয়েছে! এখন ফাইলগুলো পাঠান এবং শেষে /Done দিন।")
+            bot.reply_to(m, "❌ দয়া করে ফটো পাঠান।")
 
     elif state["status"] == "AWAITING_EPISODES":
         if m.content_type == 'text' and m.text == '/Done':
-            if not user_states[cid]["episodes"]:
-                bot.reply_to(m, "❌ কোনো ফাইল দেননি!")
-                return
-            final_data = user_states[cid].copy()
-            del final_data["status"]
-            mongo.db.movies.insert_one(final_data)
+            mongo.db.movies.insert_one(user_states[cid])
             del user_states[cid]
-            bot.reply_to(m, "🚀 ড্রামাটি সফলভাবে চ্যানেলে স্টোর ও ওয়েবসাইটে পাবলিশ হয়েছে!")
-        
+            bot.reply_to(m, "🚀 ড্রামাটি পাবলিশ হয়েছে!")
         elif m.content_type in ['video', 'document']:
             if not channel_id:
-                bot.reply_to(m, "❌ এডমিন প্যানেলে স্টোরেজ চ্যানেল আইডি সেট করা নেই!")
+                bot.reply_to(m, "❌ এডমিন প্যানেলে ফাইল চ্যানেল আইডি সেট নেই।")
                 return
-            
             try:
-                # ফাইলটি প্রাইভেট চ্যানেলে পাঠানো এবং সেখান থেকে ফাইল আইডি নেওয়া
                 if m.content_type == 'video':
-                    sent_msg = bot.send_video(channel_id, m.video.file_id)
-                    stored_fid = sent_msg.video.file_id
+                    sm = bot.send_video(channel_id, m.video.file_id)
+                    fid = sm.video.file_id
                 else:
-                    sent_msg = bot.send_document(channel_id, m.document.file_id)
-                    stored_fid = sent_msg.document.file_id
-                
-                user_states[cid]['episodes'].append(stored_fid)
-                bot.reply_to(m, f"✅ এপিসোড {len(user_states[cid]['episodes'])} প্রাইভেট চ্যানেলে স্টোর হয়েছে। আরও থাকলে পাঠান নতুবা /Done দিন।")
+                    sm = bot.send_document(channel_id, m.document.file_id)
+                    fid = sm.document.file_id
+                user_states[cid]['episodes'].append(fid)
+                bot.reply_to(m, f"✅ এপিসোড {len(user_states[cid]['episodes'])} যুক্ত হয়েছে। আরও ফাইল পাঠান নতুবা /Done দিন।")
             except Exception as e:
-                bot.reply_to(m, f"❌ চ্যানেল স্টোরেজ এরর: {str(e)}\nনিশ্চিত করুন বট ওই চ্যানেলে এডমিন আছে।")
+                bot.reply_to(m, f"❌ এরর: {str(e)}\nবট কি চ্যানেলে এডমিন আছে?")
 
 @app.route('/' + TOKEN, methods=['POST'])
 def webhook_receiver():
@@ -678,8 +720,7 @@ def webhook_receiver():
 @app.route('/set_webhook')
 def setup_webhook():
     success = bot.set_webhook(url=BASE_URL + '/' + TOKEN)
-    return "<h1>Webhook Connection Successfull!</h1>" if success else "<h1>Webhook Failed!</h1>"
+    return "<h1>Webhook OK!</h1>" if success else "<h1>Failed!</h1>"
 
-handler = app
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
