@@ -135,8 +135,7 @@ FULL_CSS = """
         font-weight: bold;
         color: white;
         display: flex;
-        flex-direction: column;
-        gap: 5px;
+        flex-direction: column; gap: 5px;
         transition: var(--transition);
     }
     .btn-premium { background: linear-gradient(45deg, #FFD700, #FFA500); color: #000; }
@@ -172,7 +171,7 @@ FULL_CSS = """
         display: flex; justify-content: space-between; align-items: center;
     }
 
-    /* --- স্লাইডার আপডেট --- */
+    /* --- স্লাইডার সেকশন আপডেট --- */
     .slider { 
         display: flex; 
         overflow-x: auto; 
@@ -185,35 +184,32 @@ FULL_CSS = """
     .slider-item { 
         min-width: 280px; 
         border-radius: 12px; 
+        position: relative; 
+        overflow: hidden; 
         background: #1a1a1a; 
         cursor: pointer;
         box-shadow: 0 4px 15px rgba(0,0,0,0.3);
         flex-shrink: 0;
     }
-    .slider-img-container {
-        width: 100%; height: 160px;
-        position: relative; overflow: hidden;
-        border-radius: 12px 12px 0 0;
-    }
-    .slider-img-container img { width: 100%; height: 100%; object-fit: cover; transition: var(--transition); }
+    .slider-img-box { position: relative; width: 100%; height: 160px; overflow: hidden; }
+    .slider-img-box img { width: 100%; height: 100%; object-fit: cover; transition: var(--transition); }
     .slider-item:hover img { transform: scale(1.05); }
     
-    .badge-view-top { 
-        position: absolute; top: 10px; right: 10px; 
+    .badge-view-red { 
+        position: absolute; top: 10px; left: 10px; 
         background: var(--primary); color: white; 
-        padding: 3px 8px; border-radius: 5px; 
-        font-size: 11px; font-weight: bold; z-index: 10;
+        padding: 3px 10px; font-size: 11px; border-radius: 5px; 
+        font-weight: bold; z-index: 10;
     }
 
     .slider-info { 
-        padding: 10px;
-        font-weight: bold; font-size: 14px;
-        text-align: center; color: #fff;
-        background: #121212;
-        border-radius: 0 0 12px 12px;
+        padding: 12px;
+        font-weight: bold; font-size: 15px;
+        text-align: center; color: white;
+        background: #111;
     }
 
-    /* --- রিসেন্ট আপলোড (Landscope) আপডেট --- */
+    /* --- রিসেন্ট আপলোড ল্যান্ডস্কেপ সেকশন --- */
     .movie-grid { 
         display: grid; 
         grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); 
@@ -229,23 +225,17 @@ FULL_CSS = """
         cursor: pointer;
     }
     .movie-card:hover { transform: translateY(-5px); border-color: var(--primary); }
-    .movie-card img { 
-        width: 100%; 
-        aspect-ratio: 16 / 9; /* ল্যান্ডস্কেপ করার জন্য */
-        object-fit: cover; 
-    }
+    
+    /* থাম্বনেইল ল্যান্ডস্কেপ করা হলো */
+    .movie-card .img-container { width: 100%; aspect-ratio: 16/9; overflow: hidden; position: relative; }
+    .movie-card img { width: 100%; height: 100%; object-fit: cover; }
     
     .badge-top-left { position: absolute; top: 10px; left: 10px; background: var(--primary); padding: 4px 10px; font-size: 11px; border-radius: 5px; font-weight: bold; z-index: 10; }
-    .badge-bottom-right { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.7); padding: 4px 10px; font-size: 11px; border-radius: 5px; display: flex; align-items: center; gap: 5px; }
+    .badge-bottom-right { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.8); padding: 4px 10px; font-size: 11px; border-radius: 5px; display: flex; align-items: center; gap: 5px; }
     
-    .movie-info-box { padding: 12px; text-align: left; }
-    .movie-info-box h4 { 
-        font-size: 15px; 
-        font-weight: 600; 
-        color: #fff; 
-        word-wrap: break-word; /* নাম বড় হলে নিচে আসবে */
-        display: block;
-    }
+    .movie-info-box { padding: 12px; text-align: left; background: #121212; }
+    /* মুভির নাম সম্পুর্ন দেখানোর জন্য আপডেট */
+    .movie-info-box h4 { font-size: 15px; font-weight: 600; color: #fff; line-height: 1.4; white-space: normal; overflow: visible; }
 
     .pagination { display: flex; justify-content: center; align-items: center; gap: 15px; margin: 50px 0; }
     .pagination a { 
@@ -347,7 +337,7 @@ FULL_CSS = """
     .del-btn { background: #ff4d4d; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; }
 
     @media (max-width: 600px) {
-        .movie-grid { grid-template-columns: repeat(1, 1fr); gap: 15px; }
+        .movie-grid { grid-template-columns: 1fr; gap: 15px; }
         .slider-item { min-width: 250px; }
     }
 </style>
@@ -360,23 +350,19 @@ FULL_CSS = """
     });
 
     // --- অটো স্লাইডার লজিক ---
-    window.onload = function() {
+    document.addEventListener("DOMContentLoaded", function() {
         const slider = document.querySelector('.slider');
         if (slider) {
-            let isMoving = true;
+            let step = 280;
             setInterval(() => {
-                if (!isMoving) return;
                 if (slider.scrollLeft + slider.clientWidth >= slider.scrollWidth) {
                     slider.scrollLeft = 0;
                 } else {
-                    slider.scrollLeft += 280;
+                    slider.scrollLeft += step;
                 }
-            }, 3000); // প্রতি ৩ সেকেন্ড পর পর স্লাইড হবে
-            
-            slider.addEventListener('mouseenter', () => isMoving = false);
-            slider.addEventListener('mouseleave', () => isMoving = true);
+            }, 3000); // প্রতি ৩ সেকেন্ডে অটো স্লাইড হবে
         }
-    };
+    });
 
     function startPremiumTimer(expiryTimestamp, elementId) {
         function update() {
@@ -500,10 +486,11 @@ def render_full_page(body_html, **kwargs):
 
         <div class="container">
             {% with messages = get_flashed_messages() %}
-                {% for m in messages %}
-                    <div style="background:var(--primary); padding:15px; text-align:center; border-radius:10px; margin-bottom:20px; font-weight:bold;">{{ m }}</div>
-                {% endfor %}
-            {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                    {% for m in messages %}
+                        <div style="background:var(--primary); padding:15px; text-align:center; border-radius:10px; margin-bottom:20px; font-weight:bold;">{{ m }}</div>
+                    {% endfor %}
+                {% endif %}
             {% endwith %}
             """
             
@@ -546,8 +533,8 @@ def index():
     <div class="slider">
         {% for s in sliders %}
         <div class="slider-item" onclick="showLoader(); location.href='/movie/{{s._id}}'">
-            <div class="slider-img-container">
-                <div class="badge-view-top"><i class="fas fa-eye"></i> {{s.views}}</div>
+            <div class="slider-img-box">
+                <div class="badge-view-red"><i class="fas fa-eye"></i> {{s.views}} Views</div>
                 <img src="{{s.poster}}">
             </div>
             <div class="slider-info">{{s.title}}</div>
@@ -559,9 +546,11 @@ def index():
     <div class="movie-grid">
         {% for m in movies %}
         <div class="movie-card" onclick="showLoader(); location.href='/movie/{{m._id}}'">
-            <div class="badge-top-left">{{m.category}}</div>
-            <div class="badge-bottom-right"><i class="fas fa-eye"></i> {{m.views}}</div>
-            <img src="{{m.poster}}">
+            <div class="img-container">
+                <div class="badge-top-left">{{m.category}}</div>
+                <div class="badge-bottom-right"><i class="fas fa-eye"></i> {{m.views}}</div>
+                <img src="{{m.poster}}">
+            </div>
             <div class="movie-info-box">
                 <h4>{{m.title}}</h4>
             </div>
@@ -768,9 +757,11 @@ def search():
     <div class="movie-grid">
         {% for m in results %}
         <div class="movie-card" onclick="showLoader(); location.href='/movie/{{m._id}}'">
-            <div class="badge-top-left">{{m.category}}</div>
-            <div class="badge-bottom-right"><i class="fas fa-eye"></i> {{m.views}}</div>
-            <img src="{{m.poster}}">
+            <div class="img-container">
+                <div class="badge-top-left">{{m.category}}</div>
+                <div class="badge-bottom-right"><i class="fas fa-eye"></i> {{m.views}}</div>
+                <img src="{{m.poster}}">
+            </div>
             <div class="movie-info-box">
                 <h4>{{m.title}}</h4>
             </div>
@@ -957,7 +948,7 @@ def admin():
                 "ad_limit": int(request.form.get('ad_limit')),
                 "lock_duration": int(request.form.get('lock_duration')),
                 "file_channel": request.form.get('file_channel'),
-                "auto_delete_time": int(settings.get('auto_delete_time', 5)),
+                "auto_delete_time": int(request.form.get('auto_delete_time', 5)),
                 "protect_content": request.form.get('protect_content'),
                 "notification_channel": request.form.get('notification_channel') 
             }}, upsert=True)
