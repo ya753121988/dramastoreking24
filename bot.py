@@ -10,7 +10,7 @@ TOKEN = "8655043839:AAFTUxq56taWUPU9uXRKuL7iyKLXRvk-WqM"  # টেলিগ্�
 BOT_USERNAME = "dramastorkingsbot"  # বটের ইউজারনেম (@ ছাড়া)
 # নিশ্চিত করুন নিচের লিঙ্কটি সঠিক এবং পাসওয়ার্ডে কোনো স্পেশাল ক্যারেক্টার থাকলে তা এনকোড করা
 MONGO_URI = "mongodb+srv://drama:drama@cluster0.sa4kvgu.mongodb.net/?appName=Cluster0"
-BASE_URL = "https://dramastoreking24.vercel.app" # আপনার বর্তমান ভার্সেল ইউআরএল
+BASE_URL = "https://indirect-meris-yeasinvai-95120fc6.koyeb.app" # আপনার বর্তমান ভার্সেল ইউআরএল
 
 app = Flask(__name__)
 app.secret_key = "premium_movie_system_key_99_final"
