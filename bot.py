@@ -40,7 +40,7 @@ def delete_msg(chat_id, message_id, delay):
     except:
         pass
 
-# --- বিস্তারিত প্রিমিয়াম সিএসএস (Design Section) ---
+# --- বিস্তারিত প্রিমিয়াম সিএসএস (Design Section Updated) ---
 FULL_CSS = """
 <style>
     :root { 
@@ -171,35 +171,52 @@ FULL_CSS = """
         padding-left: 15px;
         display: flex; justify-content: space-between; align-items: center;
     }
+
+    /* --- স্লাইডার আপডেট --- */
     .slider { 
         display: flex; 
         overflow-x: auto; 
         gap: 20px; 
         padding: 10px 0 20px; 
         scrollbar-width: none;
+        scroll-behavior: smooth;
     }
     .slider::-webkit-scrollbar { display: none; }
     .slider-item { 
-        min-width: 300px; 
-        height: 170px; 
+        min-width: 280px; 
         border-radius: 12px; 
-        position: relative; 
-        overflow: hidden; 
         background: #1a1a1a; 
         cursor: pointer;
         box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        flex-shrink: 0;
     }
-    .slider-item img { width: 100%; height: 100%; object-fit: cover; opacity: 0.6; transition: var(--transition); }
-    .slider-item:hover img { transform: scale(1.05); opacity: 0.8; }
-    .slider-info { 
-        position: absolute; bottom: 15px; left: 15px; 
-        font-weight: bold; font-size: 18px;
-        text-shadow: 2px 2px 10px #000;
+    .slider-img-container {
+        width: 100%; height: 160px;
+        position: relative; overflow: hidden;
+        border-radius: 12px 12px 0 0;
+    }
+    .slider-img-container img { width: 100%; height: 100%; object-fit: cover; transition: var(--transition); }
+    .slider-item:hover img { transform: scale(1.05); }
+    
+    .badge-view-top { 
+        position: absolute; top: 10px; right: 10px; 
+        background: var(--primary); color: white; 
+        padding: 3px 8px; border-radius: 5px; 
+        font-size: 11px; font-weight: bold; z-index: 10;
     }
 
+    .slider-info { 
+        padding: 10px;
+        font-weight: bold; font-size: 14px;
+        text-align: center; color: #fff;
+        background: #121212;
+        border-radius: 0 0 12px 12px;
+    }
+
+    /* --- রিসেন্ট আপলোড (Landscope) আপডেট --- */
     .movie-grid { 
         display: grid; 
-        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); 
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); 
         gap: 20px; 
     }
     .movie-card { 
@@ -211,14 +228,24 @@ FULL_CSS = """
         transition: var(--transition);
         cursor: pointer;
     }
-    .movie-card:hover { transform: translateY(-8px); border-color: var(--primary); box-shadow: 0 10px 20px rgba(0,0,0,0.5); }
-    .movie-card img { width: 100%; height: 240px; object-fit: cover; }
+    .movie-card:hover { transform: translateY(-5px); border-color: var(--primary); }
+    .movie-card img { 
+        width: 100%; 
+        aspect-ratio: 16 / 9; /* ল্যান্ডস্কেপ করার জন্য */
+        object-fit: cover; 
+    }
     
     .badge-top-left { position: absolute; top: 10px; left: 10px; background: var(--primary); padding: 4px 10px; font-size: 11px; border-radius: 5px; font-weight: bold; z-index: 10; }
-    .badge-bottom-right { position: absolute; bottom: 55px; right: 10px; background: rgba(0,0,0,0.8); padding: 4px 10px; font-size: 11px; border-radius: 5px; display: flex; align-items: center; gap: 5px; }
+    .badge-bottom-right { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.7); padding: 4px 10px; font-size: 11px; border-radius: 5px; display: flex; align-items: center; gap: 5px; }
     
-    .movie-info-box { padding: 12px; text-align: center; }
-    .movie-info-box h4 { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #fff; }
+    .movie-info-box { padding: 12px; text-align: left; }
+    .movie-info-box h4 { 
+        font-size: 15px; 
+        font-weight: 600; 
+        color: #fff; 
+        word-wrap: break-word; /* নাম বড় হলে নিচে আসবে */
+        display: block;
+    }
 
     .pagination { display: flex; justify-content: center; align-items: center; gap: 15px; margin: 50px 0; }
     .pagination a { 
@@ -275,7 +302,6 @@ FULL_CSS = """
     .ep-button:hover { background: #282828; transform: scale(1.02); box-shadow: 0 5px 15px rgba(229, 9, 20, 0.2); }
     .ep-status { font-size: 12px; font-weight: normal; color: var(--gray); margin-top: 5px; display: block; }
     
-    /* Task Cards */
     .task-card {
         background: #1a1a1a;
         border: 1px solid #333;
@@ -301,7 +327,6 @@ FULL_CSS = """
     }
     .task-btn.link { background: #28a745; }
 
-    /* Modal for Timer */
     #task-timer-modal {
         display: none;
         position: fixed;
@@ -314,7 +339,6 @@ FULL_CSS = """
         text-align: center;
     }
 
-    /* Admin Manage List */
     .manage-item {
         display: flex; justify-content: space-between; align-items: center;
         background: #1a1a1a; padding: 10px 15px; border-radius: 8px; margin-bottom: 10px;
@@ -323,9 +347,8 @@ FULL_CSS = """
     .del-btn { background: #ff4d4d; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; }
 
     @media (max-width: 600px) {
-        .movie-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+        .movie-grid { grid-template-columns: repeat(1, 1fr); gap: 15px; }
         .slider-item { min-width: 250px; }
-        .movie-card img { height: 200px; }
     }
 </style>
 <script>
@@ -336,7 +359,25 @@ FULL_CSS = """
         document.getElementById('loader').style.display = 'none';
     });
 
-    // --- প্রিমিয়াম টাইমার লজিক ---
+    // --- অটো স্লাইডার লজিক ---
+    window.onload = function() {
+        const slider = document.querySelector('.slider');
+        if (slider) {
+            let isMoving = true;
+            setInterval(() => {
+                if (!isMoving) return;
+                if (slider.scrollLeft + slider.clientWidth >= slider.scrollWidth) {
+                    slider.scrollLeft = 0;
+                } else {
+                    slider.scrollLeft += 280;
+                }
+            }, 3000); // প্রতি ৩ সেকেন্ড পর পর স্লাইড হবে
+            
+            slider.addEventListener('mouseenter', () => isMoving = false);
+            slider.addEventListener('mouseleave', () => isMoving = true);
+        }
+    };
+
     function startPremiumTimer(expiryTimestamp, elementId) {
         function update() {
             const now = new Date().getTime();
@@ -462,6 +503,7 @@ def render_full_page(body_html, **kwargs):
                 {% for m in messages %}
                     <div style="background:var(--primary); padding:15px; text-align:center; border-radius:10px; margin-bottom:20px; font-weight:bold;">{{ m }}</div>
                 {% endfor %}
+            {% with messages = get_flashed_messages() %}
             {% endwith %}
             """
             
@@ -504,7 +546,10 @@ def index():
     <div class="slider">
         {% for s in sliders %}
         <div class="slider-item" onclick="showLoader(); location.href='/movie/{{s._id}}'">
-            <img src="{{s.poster}}">
+            <div class="slider-img-container">
+                <div class="badge-view-top"><i class="fas fa-eye"></i> {{s.views}}</div>
+                <img src="{{s.poster}}">
+            </div>
             <div class="slider-info">{{s.title}}</div>
         </div>
         {% endfor %}
@@ -515,8 +560,8 @@ def index():
         {% for m in movies %}
         <div class="movie-card" onclick="showLoader(); location.href='/movie/{{m._id}}'">
             <div class="badge-top-left">{{m.category}}</div>
-            <img src="{{m.poster}}">
             <div class="badge-bottom-right"><i class="fas fa-eye"></i> {{m.views}}</div>
+            <img src="{{m.poster}}">
             <div class="movie-info-box">
                 <h4>{{m.title}}</h4>
             </div>
@@ -724,8 +769,8 @@ def search():
         {% for m in results %}
         <div class="movie-card" onclick="showLoader(); location.href='/movie/{{m._id}}'">
             <div class="badge-top-left">{{m.category}}</div>
-            <img src="{{m.poster}}">
             <div class="badge-bottom-right"><i class="fas fa-eye"></i> {{m.views}}</div>
+            <img src="{{m.poster}}">
             <div class="movie-info-box">
                 <h4>{{m.title}}</h4>
             </div>
@@ -912,9 +957,9 @@ def admin():
                 "ad_limit": int(request.form.get('ad_limit')),
                 "lock_duration": int(request.form.get('lock_duration')),
                 "file_channel": request.form.get('file_channel'),
-                "auto_delete_time": int(request.form.get('auto_delete_time')),
+                "auto_delete_time": int(settings.get('auto_delete_time', 5)),
                 "protect_content": request.form.get('protect_content'),
-                "notification_channel": request.form.get('notification_channel') # কিউ নাম ফিক্সড
+                "notification_channel": request.form.get('notification_channel') 
             }}, upsert=True)
             flash("বিজ্ঞাপন ও স্টোরেজ সেটিংস আপডেট হয়েছে!")
         elif action == 'delete_movie':
@@ -1143,9 +1188,6 @@ def logout():
 
 # --- টেলিগ্রাম বট হ্যান্ডলার ---
 
-API_ID = "29904834" 
-API_HASH = "8b4fd9ef578af114502feeafa2d31938" 
-
 @bot.message_handler(commands=['start'])
 def handle_bot_start(m):
     text = m.text
@@ -1178,19 +1220,16 @@ def handle_bot_start(m):
         except Exception as e:
             bot.send_message(m.chat.id, "❌ ফাইলটি পাওয়া যায়নি।")
     else:
-        # স্টার্ট বাটনে ইউজার তথ্য এবং ওয়েবসাইট বাটন
         markup = telebot.types.InlineKeyboardMarkup()
         markup.add(telebot.types.InlineKeyboardButton("🌐 Visit Website", url=BASE_URL))
         
         info = f"👤 প্রোফাইল তথ্য:\n📝 নাম: {m.from_user.first_name} {m.from_user.last_name or ''}\n🆔 আইডি: {m.from_user.id}\n🔗 ইউজারনেম: @{m.from_user.username or 'N/A'}\n\nস্বাগতম! মুভি দেখতে ওয়েবসাইট ভিজিট করুন।"
-        # রিপ্লাই এরর ফিক্স করতে send_message ব্যবহার করা হয়েছে
         bot.send_message(m.chat.id, info, reply_markup=markup)
 
 @bot.message_handler(commands=['movie'])
 def start_adding_movie(m):
-    # স্ট্রিক্ট সিকিউরিটি চেক (int কাস্ট করা হয়েছে)
     if int(m.from_user.id) != int(OWNER_ID):
-        bot.send_message(m.chat.id, f"❌ আপনি ওনার নন! আপনার আইডি: {m.from_user.id}")
+        bot.send_message(m.chat.id, f"❌ আপনি ওনার নন!")
         return
     try:
         parts = m.text.split('/movie ')[1].split(',')
@@ -1204,15 +1243,12 @@ def start_adding_movie(m):
 def handle_bot_inputs(m):
     cid = m.chat.id
     if cid not in user_states: return
-    
-    # ওনার আইডি চেক
     if int(m.from_user.id) != int(OWNER_ID): return 
     
     state = user_states[cid]
     settings = get_site_settings()
     channel_id = settings.get('file_channel')
 
-    # DONE চেক (বড় ছোট সব কাজ করবে)
     if m.text and m.text.strip().lower() == '/done':
         if state["status"] == "AWAITING_EPISODES":
             if not state["episodes"]:
@@ -1222,7 +1258,6 @@ def handle_bot_inputs(m):
             res = mongo.db.movies.insert_one(user_states[cid])
             movie_id = str(res.inserted_id)
             
-            # নোটিফিকেশন চ্যানেলে পাঠানো
             notif_ch = settings.get('notification_channel')
             if notif_ch:
                 try:
@@ -1263,8 +1298,6 @@ def handle_bot_inputs(m):
                 bot.send_message(cid, f"✅ এপিসোড {len(user_states[cid]['episodes'])} যুক্ত হয়েছে।")
             except Exception as e:
                 bot.send_message(cid, f"❌ এরর: {str(e)}")
-
-# --- Webhook receiver ---
 
 @app.route('/tg-webhook', methods=['POST'])
 def tg_webhook_receiver():
