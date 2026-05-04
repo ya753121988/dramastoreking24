@@ -12,7 +12,7 @@ from functools import wraps
 TOKEN = "8655043839:AAFTUxq56taUPU9uXRKuL7iyKLXRvk-WqM" 
 BOT_USERNAME = "dramastorkingsbot" 
 MONGO_URI = "mongodb+srv://drama:drama@cluster0.sa4kvgu.mongodb.net/DramaStoreDB?retryWrites=true&w=majority&appName=Cluster0"
-# এখানে ডোমেইন লিঙ্কটি .koyeb.app করা হয়েছে
+# Koyeb এর ডোমেইনটি ফিক্স করা হয়েছে
 BASE_URL = "https://indirect-meris-yeasinvai-95120fc6.koyeb.app" 
 
 app = Flask(__name__)
@@ -95,7 +95,6 @@ FULL_CSS = """
     .navbar a i { font-size: 18px; }
     .navbar a:hover, .navbar a.active { color: var(--primary); }
 
-    /* Search Bar Design */
     .search-container {
         padding: 15px 20px;
         max-width: 1200px;
@@ -614,7 +613,7 @@ def login():
     <div class="card">
         <h3>লগিন করুন</h3>
         <form method="POST">
-            <input name="number" placeholder="মোবাইল নাম্বার" required>
+            <input name="number" placeholder="মোাবাইল নাম্বার" required>
             <input type="password" name="password" placeholder="পাসওয়ার্ড" required>
             <button class="btn" type="submit">প্রবেশ করুন</button>
         </form>
@@ -645,12 +644,13 @@ def logout():
     session.clear()
     return redirect('/login')
 
-# --- টেলিগ্রাম বট ফিক্সড ---
+# --- টেলিগ্রাম বট হ্যান্ডলার ---
 
 @bot.message_handler(commands=['start'])
 def handle_bot_start(m):
     command_parts = m.text.split()
     if len(command_parts) > 1:
+        # ফাইল আইডি থেকে 'file_' প্রিফিক্স সরানো
         file_id = command_parts[1].replace('file_', '')
         bot.send_chat_action(m.chat.id, 'upload_document')
         try:
@@ -669,7 +669,7 @@ def start_adding_movie(m):
         parts = m.text.split('/movie ')[1].split(',')
         if len(parts) < 2: raise Exception()
         user_states[m.chat.id] = {"title": parts[0].strip(), "category": parts[1].strip(), "episodes": [], "views": 0, "status": "AWAITING_POSTER"}
-        bot.reply_to(m, "📸 পোস্টার ফটো পাঠান।")
+        bot.reply_to(m, "📸 মুভির পোস্টার ফটো পাঠান।")
     except:
         bot.reply_to(m, "⚠️ সঠিক নিয়ম: `/movie নাম, ক্যাটাগরি`", parse_mode="Markdown")
 
@@ -683,39 +683,47 @@ def handle_bot_inputs(m):
 
     if state["status"] == "AWAITING_POSTER":
         if m.content_type == 'photo':
-            # পোস্টার লিঙ্কের জন্য ফিক্স
+            # ফটো আইডি সেভ করা হচ্ছে
+            user_states[cid]["poster_id"] = m.photo[-1].file_id
+            # লিঙ্কের জন্য ফাইল পাথ বের করা
             file_info = bot.get_file(m.photo[-1].file_id)
             user_states[cid]["poster"] = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
             user_states[cid]["status"] = "AWAITING_EPISODES"
-            bot.reply_to(m, "✅ পোস্টার এড হয়েছে। এখন ভিডিও ফাইল পাঠান এবং শেষে /Done দিন।")
+            bot.reply_to(m, "✅ পোস্টার এড হয়েছে। এখন ভিডিও ফাইল পাঠান এবং সব শেষে /Done কমান্ড দিন।")
         else:
-            bot.reply_to(m, "❌ ফটো পাঠান।")
+            bot.reply_to(m, "❌ দয়া করে একটি ফটো পাঠান।")
 
     elif state["status"] == "AWAITING_EPISODES":
         if m.text == '/Done':
+            if not state["episodes"]:
+                bot.reply_to(m, "❌ কোনো এপিসোড এড করেননি।")
+                return
             mongo.db.movies.insert_one(user_states[cid])
             del user_states[cid]
-            bot.reply_to(m, "🚀 ড্রামাটি পাবলিশ হয়েছে!")
+            bot.reply_to(m, "🚀 ড্রামাটি সফলভাবে ওয়েবসাইটে পাবলিশ হয়েছে!")
         elif m.content_type in ['video', 'document']:
             if not channel_id:
-                bot.reply_to(m, "❌ ফাইল চ্যানেল আইডি সেট নেই।")
+                bot.reply_to(m, "❌ এডমিন প্যানেলে স্টোরেজ চ্যানেল আইডি সেট করা নেই।")
                 return
             try:
+                # ফাইল চ্যানেলে পাঠিয়ে সেখান থেকে আইডি নেওয়া
                 if m.content_type == 'video':
-                    sm = bot.send_video(channel_id, m.video.file_id)
-                    fid = sm.video.file_id
+                    sent = bot.send_video(channel_id, m.video.file_id)
+                    fid = sent.video.file_id
                 else:
-                    sm = bot.send_document(channel_id, m.document.file_id)
-                    fid = sm.document.file_id
+                    sent = bot.send_document(channel_id, m.document.file_id)
+                    fid = sent.document.file_id
                 user_states[cid]['episodes'].append(fid)
-                bot.reply_to(m, f"✅ এপিসোড {len(user_states[cid]['episodes'])} যুক্ত হয়েছে।")
+                bot.reply_to(m, f"✅ এপিসোড {len(user_states[cid]['episodes'])} যুক্ত হয়েছে। আরও থাকলে পাঠান নতুবা /Done দিন।")
             except Exception as e:
-                bot.reply_to(m, f"❌ এরর: {str(e)}")
+                bot.reply_to(m, f"❌ এরর: {str(e)}\nনিশ্চিত করুন বট চ্যানেলে এডমিন আছে।")
+
+# --- Webhook receiver ---
 
 @app.route('/' + TOKEN, methods=['POST'])
 def webhook_receiver():
     if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
+        json_string = request.get_json()
         update = telebot.types.Update.de_json(json_string)
         bot.process_new_updates([update])
         return "OK", 200
@@ -723,9 +731,9 @@ def webhook_receiver():
 
 @app.route('/set_webhook')
 def setup_webhook():
-    bot.remove_webhook() # নতুন কানেকশনের জন্য এটি জরুরি
+    bot.remove_webhook() # আগের কানেকশন পরিষ্কার করা
     success = bot.set_webhook(url=BASE_URL + '/' + TOKEN)
-    return "<h1>Webhook Connection Successfull!</h1>" if success else "<h1>Failed!</h1>"
+    return "<h1>Webhook Connection Successfull!</h1>" if success else "<h1>Webhook Failed!</h1>"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
