@@ -9,7 +9,6 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 
 # --- কনফিগারেশন ---
-# আপনার লগ অনুযায়ী টোকেনটি ফিক্স করা হয়েছে (taUP এর বদলে taWUP)
 TOKEN = "8655043839:AAFTUxq56taWUPU9uXRKuL7iyKLXRvk-WqM" 
 BOT_USERNAME = "dramastorkingsbot" 
 MONGO_URI = "mongodb+srv://drama:drama@cluster0.sa4kvgu.mongodb.net/DramaStoreDB?retryWrites=true&w=majority&appName=Cluster0"
@@ -314,10 +313,9 @@ def render_full_page(body_html, **kwargs):
 
 # --- সাইট লজিক রাউটস ---
 
-# Koyeb Health checks (POST /) বন্ধ করতে methods=['GET', 'POST'] যোগ করা হয়েছে
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    if request.method == 'POST': return "OK", 200 # Health check fix
+    if request.method == 'POST': return "OK", 200 # Koyeb Health Check Support
     if 'user_id' not in session: return redirect(url_for('login'))
     
     page = int(request.args.get('page', 1))
@@ -716,22 +714,16 @@ def handle_bot_inputs(m):
             except Exception as e:
                 bot.reply_to(m, f"❌ এরর: {str(e)}\nনিশ্চিত করুন বট চ্যানেলে এডমিন আছে।")
 
-# --- Webhook receiver ---
+# --- Webhook receiver (Dedicated Endpoint) ---
 
-@app.route('/' + TOKEN, methods=['POST'])
-def webhook_receiver():
+@app.route('/tg-webhook', methods=['POST'])
+def tg_webhook_receiver():
     if request.headers.get('content-type') == 'application/json':
         json_string = request.get_json()
         update = telebot.types.Update.de_json(json_string)
         bot.process_new_updates([update])
         return "OK", 200
     return "Forbidden", 403
-
-@app.route('/set_webhook')
-def setup_webhook():
-    bot.remove_webhook() 
-    success = bot.set_webhook(url=BASE_URL + '/' + TOKEN)
-    return "<h1>Webhook Connection Successfull!</h1>" if success else "<h1>Webhook Failed!</h1>"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
