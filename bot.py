@@ -1145,9 +1145,9 @@ def logout():
 # --- টেলিগ্রাম বট হ্যান্ডলার ---
 
 # নতুন সিকিউরিটি এবং এপিআই কনফিগারেশন
-API_ID = "YOUR_API_ID" 
-API_HASH = "YOUR_API_HASH" 
-OWNER_ID = 6875955684 
+API_ID = "29904834" 
+API_HASH = "8b4fd9ef578af114502feeafa2d31938" 
+OWNER_ID = 7120801813 
 
 @bot.message_handler(commands=['start'])
 def handle_bot_start(m):
