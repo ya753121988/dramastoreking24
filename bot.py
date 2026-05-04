@@ -184,7 +184,6 @@ FULL_CSS = """
         box-shadow: 0 4px 15px rgba(0,0,0,0.3);
     }
     .slider-item img { width: 100%; height: 100%; object-fit: cover; opacity: 0.6; transition: var(--transition); }
-    .slider-item:hover img { transform: scale(1.05); opacity: 0.8; }
     .slider-info { 
         position: absolute; bottom: 15px; left: 15px; 
         font-weight: bold; font-size: 18px;
@@ -344,55 +343,55 @@ def render_full_page(body_html, **kwargs):
     if 'user_id' in session:
         user_data = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
     
-    full_html = f"""
+    full_html = """
     <!DOCTYPE html>
     <html lang="bn">
     <head>
         <meta charset="UTF-8">
-        <title>{{{{ settings.site_name }}}}</title>
+        <title>{{ settings.site_name }}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-        {FULL_CSS}
+        """ + FULL_CSS + """
     </head>
     <body>
         <div id="loader"><div class="spinner"></div><p style="margin-top:20px; color:var(--primary); font-weight:bold;">লোডিং হচ্ছে...</p></div>
         
-        <div class="notice-bar">{{{{ settings.notice }}}}</div>
+        <div class="notice-bar">{{ settings.notice }}</div>
         
         <div class="navbar">
-            <a href="/" class="{'active' if current_path == '/' else ''}"><i class="fas fa-home"></i> হোম</a>
-            <a href="/profile" class="{'active' if current_path == '/profile' else ''}"><i class="fas fa-user"></i> প্রোফাইল</a>
-            {{% if session.get('role') == 'admin' %}}
-            <a href="/admin" class="{'active' if current_path == '/admin' else ''}"><i class="fas fa-user-shield"></i> এডমিন</a>
-            {{% endif %}}
+            <a href="/" class="{% if request.path == '/' %}active{% endif %}"><i class="fas fa-home"></i> হোম</a>
+            <a href="/profile" class="{% if request.path == '/profile' %}active{% endif %}"><i class="fas fa-user"></i> প্রোফাইল</a>
+            {% if session.get('role') == 'admin' %}
+            <a href="/admin" class="{% if request.path == '/admin' %}active{% endif %}"><i class="fas fa-user-shield"></i> এডমিন</a>
+            {% endif %}
         </div>
 
-        {{% if user_data %}}
+        {% if user_data %}
         <div class="user-stats-bar">
-            <span><i class="fas fa-wallet" style="color:gold;"></i> ব্যালেন্স: <b>{{{{ user_data.get('coins', 0) }}}}</b> কয়েন</span>
-            {{% if user_data.get('premium_until') and user_data.get('premium_until') > now %}}
+            <span><i class="fas fa-wallet" style="color:gold;"></i> ব্যালেন্স: <b>{{ user_data.get('coins', 0) }}</b> কয়েন</span>
+            {% if user_data.get('premium_until') and user_data.get('premium_until') > now %}
             <span style="color:gold; font-weight:bold;"><i class="fas fa-crown"></i> প্রিমিয়াম</span>
-            {{% else %}}
+            {% else %}
             <span style="color:var(--gray);">ফ্রি ইউজার</span>
-            {{% endif %}}
+            {% endif %}
         </div>
-        {{% endif %}}
+        {% endif %}
 
         <div class="search-container">
             <form action="/search" method="GET" class="search-form">
-                <input type="text" name="q" placeholder="মুভি বা ড্রামা সার্চ করুন..." value="{{{{ request.args.get('q', '') }}}}" required>
+                <input type="text" name="q" placeholder="মুভি বা ড্রামা সার্চ করুন..." value="{{ request.args.get('q', '') }}" required>
                 <button type="submit" class="btn"><i class="fas fa-search"></i></button>
             </form>
         </div>
 
         <div class="container">
-            {{% with messages = get_flashed_messages() %}}
-                {{% for m in messages %}}
-                    <div style="background:var(--primary); padding:15px; text-align:center; border-radius:10px; margin-bottom:20px; font-weight:bold;">{{{{ m }}}}</div>
-                {{% endfor %}}
-            {{% endwith %}}
+            {% with messages = get_flashed_messages() %}
+                {% for m in messages %}
+                    <div style="background:var(--primary); padding:15px; text-align:center; border-radius:10px; margin-bottom:20px; font-weight:bold;">{{ m }}</div>
+                {% endfor %}
+            {% endwith %}
             
-            {body_html}
+            """ + body_html + """
         </div>
     </body>
     </html>
@@ -599,29 +598,27 @@ def purchase_premium(oid):
         flash("আপনার পর্যাপ্ত কয়েন নেই!")
     return redirect('/profile')
 
-# --- আগের সব রাউটস অক্ষুণ্ণ রাখা হয়েছে ---
-
 @app.route('/search')
 def search():
     if 'user_id' not in session: return redirect(url_for('login'))
     query = request.args.get('q', '')
     results = list(mongo.db.movies.find({"title": {"$regex": query, "$options": "i"}}).sort("_id", -1))
     
-    content = f"""
-    <div class="section-title">সার্চ রেজাল্ট: "{query}"</div>
+    content = """
+    <div class="section-title">সার্চ রেজাল্ট: "{{ query }}"</div>
     <div class="movie-grid">
-        {{% for m in results %}}
-        <div class="movie-card" onclick="showLoader(); location.href='/movie/{{{{m._id}}}}'">
-            <div class="badge-top-left">{{{{m.category}}}}</div>
-            <img src="{{{{m.poster}}}}">
-            <div class="badge-bottom-right"><i class="fas fa-eye"></i> {{{{m.views}}}}</div>
+        {% for m in results %}
+        <div class="movie-card" onclick="showLoader(); location.href='/movie/{{m._id}}'">
+            <div class="badge-top-left">{{m.category}}</div>
+            <img src="{{m.poster}}">
+            <div class="badge-bottom-right"><i class="fas fa-eye"></i> {{m.views}}</div>
             <div class="movie-info-box">
-                <h4>{{{{m.title}}}}</h4>
+                <h4>{{m.title}}</h4>
             </div>
         </div>
-        {{% else %}}
+        {% else %}
         <p style="text-align:center; grid-column: 1/-1; padding: 50px; color: var(--gray);">দুঃখিত, আপনার সার্চ করা মুভিটি পাওয়া যায়নি।</p>
-        {{% endfor %}}
+        {% endfor %}
     </div>
     """
     return render_full_page(content, results=results, query=query)
@@ -641,107 +638,108 @@ def movie_detail(m_id):
     user = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
     is_premium = user.get('premium_until') and user['premium_until'] > datetime.datetime.now()
 
-    content = f"""
+    content = """
     <div class="back-btn-container">
         <a href="/" onclick="showLoader();" class="back-btn"><i class="fas fa-arrow-left"></i> ব্যাক টু হোম</a>
     </div>
     
     <div style="text-align:center;">
-        <img src="{{{{ movie.poster }}}}" style="width:100%; max-width:400px; border-radius:20px; border:3px solid #222; box-shadow: 0 15px 40px rgba(0,0,0,0.7);">
-        <h2 style="margin:25px 0 10px; font-size:28px;">{{{{ movie.title }}}}</h2>
+        <img src="{{ movie.poster }}" style="width:100%; max-width:400px; border-radius:20px; border:3px solid #222; box-shadow: 0 15px 40px rgba(0,0,0,0.7);">
+        <h2 style="margin:25px 0 10px; font-size:28px;">{{ movie.title }}</h2>
         <div style="margin-bottom:30px;">
-            <span style="background:#222; padding:5px 15px; border-radius:20px; font-size:14px; margin:0 5px;">{{{{ movie.category }}}}</span>
-            <span style="background:#222; padding:5px 15px; border-radius:20px; font-size:14px; margin:0 5px;"><i class="fas fa-eye"></i> {{{{ movie.views }}}} Views</span>
+            <span style="background:#222; padding:5px 15px; border-radius:20px; font-size:14px; margin:0 5px;">{{ movie.category }}</span>
+            <span style="background:#222; padding:5px 15px; border-radius:20px; font-size:14px; margin:0 5px;"><i class="fas fa-eye"></i> {{ movie.views }} Views</span>
         </div>
         
         <div class="card" style="max-width:100%; text-align:left; border-top:4px solid var(--primary);">
             <h4 style="margin-bottom:20px; border-bottom:1px solid #333; padding-bottom:10px;">ডাউনলোড এবং ওয়াচ লিঙ্ক:</h4>
             <div class="episode-list">
-                {{% for msg_id in movie.episodes %}}
-                <div class="ep-button" onclick="processAd('{{{{ msg_id }}}}_idx_{{{{ loop.index0 }}}}', '{{{{ msg_id }}}}')">
+                {% for msg_id in movie.episodes %}
+                <div class="ep-button" onclick="processAd('{{ msg_id }}_idx_{{ loop.index0 }}', '{{ msg_id }}')">
                     <div>
-                        🎬 Episode {{{{ "%02d" % (loop.index0 + 1) }}}}
-                        <span class="ep-status" id="status_{{{{ msg_id }}}}_idx_{{{{ loop.index0 }}}}">লোড হচ্ছে...</span>
+                        🎬 Episode {{ "%02d" % (loop.index0 + 1) }}
+                        <span class="ep-status" id="status_{{ msg_id }}_idx_{{ loop.index0 }}">লোড হচ্ছে...</span>
                     </div>
                     <i class="fas fa-download"></i>
                 </div>
-                {{% endfor %}}
+                {% endfor %}
             </div>
         </div>
     </div>
 
     <!-- Monetag Integration -->
-    <script src='//libtl.com/sdk.js' data-zone='{{{{ settings.monetag_id }}}}' data-sdk='show_{{{{ settings.monetag_id }}}}'></script>
+    <script src='//libtl.com/sdk.js' data-zone='{{ settings.monetag_id }}' data-sdk='show_{{ settings.monetag_id }}'></script>
     
     <script>
-        const AD_LIMIT = {{{{ settings.ad_limit }}}};
-        const LOCK_MINUTES = {{{{ settings.lock_duration }}}};
-        const IS_PREMIUM = {{{{ 'true' if is_premium else 'false' }}}};
+        const AD_LIMIT = {{ settings.ad_limit }};
+        const LOCK_MINUTES = {{ settings.lock_duration }};
+        const IS_PREMIUM = {{ 'true' if is_premium else 'false' }};
+        const BOT_USERNAME = '""" + BOT_USERNAME + """';
 
-        function updateStatus(uniqueId) {{
-            if(IS_PREMIUM) {{
+        function updateStatus(uniqueId) {
+            if(IS_PREMIUM) {
                 document.getElementById('status_' + uniqueId).innerHTML = "🔓 প্রিমিয়াম আনলকড (No Ads)";
                 document.getElementById('status_' + uniqueId).style.color = "gold";
                 return;
-            }}
-            let data = JSON.parse(localStorage.getItem('ad_data_' + uniqueId) || '{{"count":0, "unlocked_at":0}}');
+            }
+            let data = JSON.parse(localStorage.getItem('ad_data_' + uniqueId) || '{"count":0, "unlocked_at":0}');
             let statusEl = document.getElementById('status_' + uniqueId);
             let now = new Date().getTime();
             
-            if (data.unlocked_at > 0) {{
+            if (data.unlocked_at > 0) {
                 let elapsed = (now - data.unlocked_at) / (1000 * 60);
-                if (elapsed >= LOCK_MINUTES) {{
+                if (elapsed >= LOCK_MINUTES) {
                     data.count = 0;
                     data.unlocked_at = 0;
                     localStorage.setItem('ad_data_' + uniqueId, JSON.stringify(data));
-                }}
-            }}
+                }
+            }
 
-            if (data.unlocked_at > 0) {{
+            if (data.unlocked_at > 0) {
                 let remain = Math.ceil(LOCK_MINUTES - (now - data.unlocked_at) / (1000 * 60));
                 statusEl.innerHTML = "🔓 আনলকড (বাকি " + remain + " মিনিট)";
                 statusEl.style.color = "#00ff00";
-            }} else {{
+            } else {
                 statusEl.innerHTML = "🔒 বিজ্ঞাপন দেখা হয়েছে: " + data.count + "/" + AD_LIMIT;
                 statusEl.style.color = "#b3b3b3";
-            }}
-        }}
+            }
+        }
 
-        document.querySelectorAll('[id^="status_"]').forEach(el => {{
+        document.querySelectorAll('[id^="status_"]').forEach(el => {
             updateStatus(el.id.replace('status_', ''));
-        }});
+        });
 
-        function processAd(uniqueId, fileId) {{
-            if(IS_PREMIUM) {{
+        function processAd(uniqueId, fileId) {
+            if(IS_PREMIUM) {
                 showLoader();
-                window.location.href = "https://t.me/" + "{BOT_USERNAME}" + "?start=file_" + fileId;
+                window.location.href = "https://t.me/" + BOT_USERNAME + "?start=file_" + fileId;
                 return;
-            }}
+            }
 
-            let data = JSON.parse(localStorage.getItem('ad_data_' + uniqueId) || '{{"count":0, "unlocked_at":0}}');
+            let data = JSON.parse(localStorage.getItem('ad_data_' + uniqueId) || '{"count":0, "unlocked_at":0}');
             let now = new Date().getTime();
 
-            if (data.unlocked_at > 0) {{
+            if (data.unlocked_at > 0) {
                 showLoader();
-                window.location.href = "https://t.me/" + "{BOT_USERNAME}" + "?start=file_" + fileId;
+                window.location.href = "https://t.me/" + BOT_USERNAME + "?start=file_" + fileId;
                 return;
-            }}
+            }
 
-            if (data.count < AD_LIMIT) {{
-                if (typeof window['show_' + {{{{ settings.monetag_id }}}}] === 'function') {{
-                    window['show_' + {{{{ settings.monetag_id }}}}]();
-                }}
+            if (data.count < AD_LIMIT) {
+                if (typeof window['show_' + {{ settings.monetag_id }}] === 'function') {
+                    window['show_' + {{ settings.monetag_id }}]();
+                }
                 data.count++;
                 localStorage.setItem('ad_data_' + uniqueId, JSON.stringify(data));
                 updateStatus(uniqueId);
-            }} else {{
+            } else {
                 data.unlocked_at = now;
                 localStorage.setItem('ad_data_' + uniqueId, JSON.stringify(data));
                 updateStatus(uniqueId);
                 showLoader();
-                window.location.href = "https://t.me/" + "{BOT_USERNAME}" + "?start=file_" + fileId;
-            }}
-        }}
+                window.location.href = "https://t.me/" + BOT_USERNAME + "?start=file_" + fileId;
+            }
+        }
     </script>
     """
     return render_full_page(content, movie=movie, is_premium=is_premium)
@@ -960,15 +958,15 @@ def login():
 def profile():
     if 'user_id' not in session: return redirect('/login')
     u = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
-    html = f"""
+    html = """
     <div class="card" style="text-align:center;">
         <div style="width:100px; height:100px; background:var(--primary); border-radius:50%; margin:auto; display:flex; justify-content:center; align-items:center; font-size:40px; margin-bottom:20px;">
             <i class="fas fa-user"></i>
         </div>
-        <h2 style="margin-bottom:10px;">{{{{ u.fname }}}} {{{{ u.lname }}}}</h2>
-        <p style="color:var(--gray); margin-bottom:10px;"><i class="fas fa-phone"></i> {{{{ u.number }}}}</p>
-        <p style="color:var(--gold); font-weight:bold; margin-bottom:10px;"><i class="fas fa-coins"></i> ব্যালেন্স: {{{{ u.get('coins', 0) }}}}</p>
-        <p style="color:var(--primary); font-weight:bold; margin-bottom:20px;">পজিশন: {{{{ u.role|upper }}}}</p>
+        <h2 style="margin-bottom:10px;">{{ u.fname }} {{ u.lname }}</h2>
+        <p style="color:var(--gray); margin-bottom:10px;"><i class="fas fa-phone"></i> {{ u.number }}</p>
+        <p style="color:var(--gold); font-weight:bold; margin-bottom:10px;"><i class="fas fa-coins"></i> ব্যালেন্স: {{ u.get('coins', 0) }}</p>
+        <p style="color:var(--primary); font-weight:bold; margin-bottom:20px;">পজিশন: {{ u.role|upper }}</p>
         <a href="/logout" class="btn" style="background:#333;">লগআউট (Logout)</a>
     </div>
     """
