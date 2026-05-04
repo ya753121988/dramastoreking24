@@ -16,6 +16,11 @@ BOT_USERNAME = "dramastorkingsbot"
 MONGO_URI = "mongodb+srv://drama:drama@cluster0.sa4kvgu.mongodb.net/DramaStoreDB?retryWrites=true&w=majority&appName=Cluster0"
 BASE_URL = "https://indirect-meris-yeasinvai-95120fc6.koyeb.app" 
 
+# --- নতুন যুক্ত করা কনফিগারেশন ---
+API_ID = "YOUR_API_ID" # আপনার এপিআই আইডি এখানে দিন
+API_HASH = "YOUR_API_HASH" # আপনার এপিআই হ্যাশ এখানে দিন
+OWNER_ID = 6875955684 # এখানে আপনার টেলিগ্রাম আইডি (শুধু আপনিই মুভি এড করতে পারবেন)
+
 app = Flask(__name__)
 app.secret_key = "ULTRA_FINAL_FULL_MEGA_CODE_VERSION_PRO"
 app.config["MONGO_URI"] = MONGO_URI
@@ -367,7 +372,7 @@ FULL_CSS = """
 </script>
 """
 
-# --- ডাটাবেজ এবং সেটিংস হেল্পার ---
+# --- ডাটাবেজ এবং সেটিিংস হেল্পার ---
 def get_site_settings():
     try:
         s = mongo.db.settings.find_one({"type": "config"})
@@ -376,13 +381,14 @@ def get_site_settings():
                 "site_name": "PremiumMovie", "notice": "স্বাগতম!", 
                 "monetag_id": "10351894", "ad_limit": 2, 
                 "lock_duration": 30, "file_channel": "",
-                "auto_delete_time": 5, "protect_content": "No"
+                "auto_delete_time": 5, "protect_content": "No",
+                "notification_channel": "" # নতুন ঘর যুক্ত করা হয়েছে
             }
             mongo.db.settings.insert_one({"type": "config", **default})
             return default
         return s
     except Exception as e:
-        return {"site_name": "PremiumMovie", "notice": "Error!", "monetag_id": "10351894", "ad_limit": 2, "lock_duration": 30, "file_channel": "", "auto_delete_time": 5, "protect_content": "No"}
+        return {"site_name": "PremiumMovie", "notice": "Error!", "monetag_id": "10351894", "ad_limit": 2, "lock_duration": 30, "file_channel": "", "auto_delete_time": 5, "protect_content": "No", "notification_channel": ""}
 
 # --- মাস্টার টেমপ্লেট মেকার ---
 def render_full_page(body_html, **kwargs):
@@ -908,7 +914,8 @@ def admin():
                 "lock_duration": int(request.form.get('lock_duration')),
                 "file_channel": request.form.get('file_channel'),
                 "auto_delete_time": int(request.form.get('auto_delete_time')),
-                "protect_content": request.form.get('protect_content')
+                "protect_content": request.form.get('protect_content'),
+                "notification_channel": request.form.get('notification_channel') # আপডেট লজিক
             }}, upsert=True)
             flash("বিজ্ঞাপন ও স্টোরেজ সেটিংস আপডেট হয়েছে!")
         elif action == 'delete_movie':
@@ -1005,6 +1012,7 @@ def admin():
             এপিসোড প্রতি বিজ্ঞাপন: <input type="number" name="ad_limit" value="{{ settings.ad_limit }}">
             লক ডিউরেশন (মিনিট): <input type="number" name="lock_duration" value="{{ settings.lock_duration }}">
             ফাইল চ্যানেল আইডি: <input name="file_channel" value="{{ settings.file_channel }}">
+            নোটিফিকেশন চ্যানেল আইডি: <input name="notification_channel" value="{{ settings.notification_channel }}">
             অটো ডিলিট টাইম (মিনিট): <input type="number" name="auto_delete_time" value="{{ settings.auto_delete_time }}">
             ফরওয়ার্ড বন্ধ করবেন?
             <select name="protect_content">
@@ -1136,6 +1144,11 @@ def logout():
 
 # --- টেলিগ্রাম বট হ্যান্ডলার ---
 
+# নতুন সিকিউরিটি এবং এপিআই কনফিগারেশন
+API_ID = "YOUR_API_ID" 
+API_HASH = "YOUR_API_HASH" 
+OWNER_ID = 6875955684 
+
 @bot.message_handler(commands=['start'])
 def handle_bot_start(m):
     text = m.text
@@ -1155,7 +1168,7 @@ def handle_bot_start(m):
                 ep_index = movie['episodes'].index(msg_id) + 1
             
             movie_name = movie['title'] if movie else "Unknown Movie"
-            caption = f"🎬 {movie_name} Episode: {ep_index:02d}ধন্যবাদ ড্রামা স্টোর কিং এর সাথে থাকার জন্য।"
+            caption = f"🎬 {movie_name}\\n🎞 Episode: {ep_index:02d}\\n\\nধন্যবাদ ড্রামা স্টোর কিং এর সাথে থাকার জন্য।"
             
             protect = True if settings.get('protect_content') == "Yes" else False
             
@@ -1168,10 +1181,19 @@ def handle_bot_start(m):
         except Exception as e:
             bot.reply_to(m, "❌ ফাইলটি পাওয়া যায়নি।")
     else:
-        bot.reply_to(m, "👋 স্বাগতম! মুভি এড করতে /movie নাম, ক্যাটাগরি লিখুন।")
+        # স্টার্ট বাটনে ইউজার ইনফো এবং ওয়েবসাইট বাটন যুক্ত করা হলো
+        markup = telebot.types.InlineKeyboardMarkup()
+        markup.add(telebot.types.InlineKeyboardButton("🌐 Visit Website", url=BASE_URL))
+        
+        user_info = f"👤 প্রোফাইল তথ্য:\\n📝 নাম: {m.from_user.first_name} {m.from_user.last_name or ''}\\n🆔 আইডি: {m.from_user.id}\\n🔗 ইউজারনেম: @{m.from_user.username or 'N/A'}\\n\\nস্বাগতম! মুভি দেখতে ওয়েবসাইট ভিজিট করুন।"
+        bot.reply_to(m, user_info, reply_markup=markup)
 
 @bot.message_handler(commands=['movie'])
 def start_adding_movie(m):
+    # শুধুমাত্র ওনার মুভি এড করতে পারবে
+    if m.from_user.id != OWNER_ID:
+        bot.reply_to(m, "❌ আপনি এই কমান্ডটি ব্যবহার করার অনুমতিপ্রাপ্ত নন।")
+        return
     try:
         parts = m.text.split('/movie ')[1].split(',')
         if len(parts) < 2: raise Exception()
@@ -1184,6 +1206,8 @@ def start_adding_movie(m):
 def handle_bot_inputs(m):
     cid = m.chat.id
     if cid not in user_states: return
+    if m.from_user.id != OWNER_ID: return # সিকিউরিটি চেক
+    
     state = user_states[cid]
     settings = get_site_settings()
     channel_id = settings.get('file_channel')
@@ -1202,9 +1226,24 @@ def handle_bot_inputs(m):
             if not state["episodes"]:
                 bot.reply_to(m, "❌ কোনো এপিসোড নেই।")
                 return
-            mongo.db.movies.insert_one(user_states[cid])
+            
+            res = mongo.db.movies.insert_one(user_states[cid])
+            movie_id = str(res.inserted_id)
+            
+            # নোটিফিকেশন চ্যানেলে পাঠানো (নতুন ফিচার)
+            notif_ch = settings.get('notification_channel')
+            if notif_ch:
+                try:
+                    markup = telebot.types.InlineKeyboardMarkup()
+                    markup.add(telebot.types.InlineKeyboardButton("👁 Watch Movie", url=f"{BASE_URL}/movie/{movie_id}"))
+                    msg = f"🔥 নতুন মুভি আপলোড হয়েছে!\\n\\n🎬 নাম: {state['title']}\\n📁 ক্যাটাগরি: {state['category']}\\n🎞 এপিসোড সংখ্যা: {len(state['episodes'])}\\n\\nনিচের বাটনে ক্লিক করে মুভিটি দেখুন।"
+                    bot.send_photo(notif_ch, state['poster'], caption=msg, reply_markup=markup)
+                except:
+                    pass
+                
             del user_states[cid]
-            bot.reply_to(m, "🚀 ওয়েবসাইটে পাবলিশ হয়েছে!")
+            bot.reply_to(m, "🚀 ওয়েবসাইট ও চ্যানেলে পাবলিশ হয়েছে!")
+            
         elif m.content_type in ['video', 'document']:
             if not channel_id:
                 bot.reply_to(m, "❌ চ্যানেল আইডি নেই।")
