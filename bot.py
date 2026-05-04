@@ -109,10 +109,11 @@ FULL_CSS = """
         background: #1a1a1a;
         padding: 10px 20px;
         display: flex;
-        justify-content: space-between;
+        flex-direction: column;
         align-items: center;
         border-bottom: 1px solid #333;
         font-size: 14px;
+        gap: 5px;
     }
 
     .feature-menus {
@@ -329,6 +330,38 @@ FULL_CSS = """
     window.addEventListener('pageshow', function(event) {
         document.getElementById('loader').style.display = 'none';
     });
+
+    // --- প্রিমিয়াম টাইমার লজিক ---
+    function startPremiumTimer(expiryTimestamp, elementId) {
+        function update() {
+            const now = new Date().getTime();
+            const diff = expiryTimestamp - now;
+
+            if (diff <= 0) {
+                document.getElementById(elementId).innerHTML = "মেয়াদ শেষ";
+                return;
+            }
+
+            const years = Math.floor(diff / (1000 * 60 * 60 * 24 * 365));
+            const months = Math.floor((diff % (1000 * 60 * 60 * 24 * 365)) / (1000 * 60 * 60 * 24 * 30));
+            const weeks = Math.floor((diff % (1000 * 60 * 60 * 24 * 30)) / (1000 * 60 * 60 * 24 * 7));
+            const days = Math.floor((diff % (1000 * 60 * 60 * 24 * 7)) / (1000 * 60 * 60 * 24));
+            const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+            let timeStr = "";
+            if (years > 0) timeStr += years + " বছর ";
+            if (months > 0) timeStr += months + " মাস ";
+            if (weeks > 0) timeStr += weeks + " সপ্তাহ ";
+            if (days > 0) timeStr += days + " দিন ";
+            timeStr += hours + " ঘণ্টা " + minutes + " মি. " + seconds + " সে.";
+
+            document.getElementById(elementId).innerHTML = timeStr;
+        }
+        setInterval(update, 1000);
+        update();
+    }
 </script>
 """
 
@@ -352,15 +385,15 @@ def get_site_settings():
 # --- মাস্টার টেমপ্লেট মেকার ---
 def render_full_page(body_html, **kwargs):
     settings = get_site_settings()
-    
-    # ফিক্স: kwargs এর ভেতর settings থাকলে তা সরিয়ে ফেলা হচ্ছে যেন render_template_string এ ডুপ্লিকেট না হয়
     kwargs.pop('settings', None)
     
-    # ইউজার ব্যালেন্স ও প্রিমিয়াম চেক
     user_data = None
+    expiry_ts = 0
     if 'user_id' in session:
         try:
             user_data = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
+            if user_data and user_data.get('premium_until'):
+                expiry_ts = int(user_data['premium_until'].timestamp() * 1000)
         except:
             pass
     
@@ -371,6 +404,8 @@ def render_full_page(body_html, **kwargs):
         <meta charset="UTF-8">
         <title>{{ settings.site_name }}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link rel="preconnect" href="//libtl.com">
+        <link rel="dns-prefetch" href="//libtl.com">
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
         """ + FULL_CSS + """
     </head>
@@ -389,11 +424,19 @@ def render_full_page(body_html, **kwargs):
 
         {% if user_data %}
         <div class="user-stats-bar">
-            <span><i class="fas fa-wallet" style="color:gold;"></i> ব্যালেন্স: <b>{{ user_data.get('coins', 0) }}</b> কয়েন</span>
+            <div style="display:flex; justify-content:space-between; width:100%;">
+                <span><i class="fas fa-wallet" style="color:gold;"></i> ব্যালেন্স: <b>{{ user_data.get('coins', 0) }}</b> কয়েন</span>
+                {% if user_data.get('premium_until') and user_data.get('premium_until') > now %}
+                <span style="color:gold; font-weight:bold;"><i class="fas fa-crown"></i> প্রিমিয়াম</span>
+                {% else %}
+                <span style="color:var(--gray);">ফ্রি ইউজার</span>
+                {% endif %}
+            </div>
             {% if user_data.get('premium_until') and user_data.get('premium_until') > now %}
-            <span style="color:gold; font-weight:bold;"><i class="fas fa-crown"></i> প্রিমিয়াম</span>
-            {% else %}
-            <span style="color:var(--gray);">ফ্রি ইউজার</span>
+            <div style="font-size:11px; color:#00ff00; width:100%; text-align:center;">
+                বাকি সময়: <span id="nav-premium-timer"></span>
+                <script>startPremiumTimer({{ expiry_ts }}, 'nav-premium-timer');</script>
+            </div>
             {% endif %}
         </div>
         {% endif %}
@@ -420,7 +463,7 @@ def render_full_page(body_html, **kwargs):
     """
     
     full_template = template_start + body_html + template_end
-    return render_template_string(full_template, settings=settings, session=session, user_data=user_data, now=datetime.datetime.now(), **kwargs)
+    return render_template_string(full_template, settings=settings, session=session, user_data=user_data, expiry_ts=expiry_ts, now=datetime.datetime.now(), **kwargs)
 
 # --- সাইট লজিক রাউটস ---
 
@@ -491,7 +534,6 @@ def tasks():
     
     user = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
     
-    # ডেলি লিমিট রিসেট লজিক (রোজকার স্ট্যাটাস)
     today = datetime.datetime.now().strftime("%Y-%m-%d")
     daily_stats = user.get('daily_stats', {"date": today, "counts": {}})
     
@@ -515,7 +557,6 @@ def tasks():
     </div>
     {% endfor %}
 
-    <!-- Timer Modal -->
     <div id="task-timer-modal">
         <h2 style="color:var(--primary);">অপেক্ষা করুন...</h2>
         <div id="timer-countdown" style="font-size:50px; font-weight:bold; margin:20px 0;">0</div>
@@ -535,7 +576,6 @@ def tasks():
                 if(type === 'link') {
                     window.open(data.content, '_blank');
                 } else if(type === 'monetag') {
-                    // FIX: মনিটেগ স্ক্রিপ্ট রান করানোর সঠিক পদ্ধতি
                     const tempDiv = document.createElement('div');
                     tempDiv.innerHTML = data.content;
                     const scripts = tempDiv.getElementsByTagName('script');
@@ -544,20 +584,18 @@ def tasks():
                         Array.from(scripts[i].attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
                         document.body.appendChild(newScript);
                         
-                        // SDK ফাংশন কল (যেমন: show_10351894)
                         const sdkFunc = scripts[i].getAttribute('data-sdk');
                         if (sdkFunc) {
                             setTimeout(() => {
                                 if (typeof window[sdkFunc] === 'function') {
                                     window[sdkFunc]();
                                 }
-                            }, 1500);
+                            }, 500);
                         }
                     }
                 }
             });
 
-            // টাইমার শুরু
             document.getElementById('task-timer-modal').style.display = 'flex';
             let timeLeft = timerSec;
             document.getElementById('timer-countdown').innerText = timeLeft;
@@ -610,12 +648,10 @@ def claim_task_new(tid):
     today = datetime.datetime.now().strftime("%Y-%m-%d")
     daily_stats = user.get('daily_stats', {"date": today, "counts": {}})
     
-    # ডেলি লিমিট চেক
     current_count = daily_stats.get('counts', {}).get(str(tid), 0)
     if int(current_count) >= int(t.get('daily_limit', 1)):
         return jsonify({"success": False, "error": "আজকের লিমিট শেষ!"})
     
-    # কয়েন এবং স্ট্যাটাস আপডেট
     mongo.db.users.update_one({"_id": uid}, {
         "$inc": {"coins": int(t.get('reward', 10)), f"daily_stats.counts.{tid}": 1},
         "$set": {"daily_stats.date": today}
@@ -735,8 +771,8 @@ def movie_detail(m_id):
         </div>
     </div>
 
-    <!-- Monetag Integration -->
-    <script src='//libtl.com/sdk.js' data-zone='{{ settings.monetag_id }}' data-sdk='show_{{ settings.monetag_id }}'></script>
+    <!-- Monetag Optimization: Fast Loading Scripts -->
+    <script async src='//libtl.com/sdk.js' data-zone='{{ settings.monetag_id }}' data-sdk='show_{{ settings.monetag_id }}'></script>
     
     <script>
         const AD_LIMIT = {{ settings.ad_limit }};
@@ -794,6 +830,7 @@ def movie_detail(m_id):
             }
 
             if (data.count < AD_LIMIT) {
+                // Trigger Ad Faster
                 if (typeof window['show_' + {{ settings.monetag_id }}] === 'function') {
                     window['show_' + {{ settings.monetag_id }}]();
                 }
@@ -1035,6 +1072,10 @@ def login():
 def profile():
     if 'user_id' not in session: return redirect('/login')
     u = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
+    expiry_ts = 0
+    if u.get('premium_until'):
+        expiry_ts = int(u['premium_until'].timestamp() * 1000)
+        
     html = """
     <div class="card" style="text-align:center;">
         <div style="width:100px; height:100px; background:var(--primary); border-radius:50%; margin:auto; display:flex; justify-content:center; align-items:center; font-size:40px; margin-bottom:20px;">
@@ -1043,11 +1084,22 @@ def profile():
         <h2 style="margin-bottom:10px;">{{ u.fname }} {{ u.lname }}</h2>
         <p style="color:var(--gray); margin-bottom:10px;"><i class="fas fa-phone"></i> {{ u.number }}</p>
         <p style="color:var(--gold); font-weight:bold; margin-bottom:10px;"><i class="fas fa-coins"></i> ব্যালেন্স: {{ u.get('coins', 0) }}</p>
+        
+        {% if u.premium_until and u.premium_until > now %}
+        <div style="background:#1a1a1a; border:1px solid var(--gold); border-radius:10px; padding:15px; margin-bottom:20px;">
+            <p style="color:var(--gold); font-weight:bold;"><i class="fas fa-crown"></i> প্রিমিয়াম একটিভ</p>
+            <p style="font-size:12px; color:#fff;">মেয়াদ শেষ হতে বাকি:</p>
+            <p id="profile-premium-timer" style="font-size:14px; font-weight:bold; color:#00ff00;"></p>
+            <script>startPremiumTimer({{ expiry_ts }}, 'profile-premium-timer');</script>
+        </div>
+        {% else %}
         <p style="color:var(--primary); font-weight:bold; margin-bottom:20px;">পজিশন: {{ u.role|upper }}</p>
+        {% endif %}
+        
         <a href="/logout" class="btn" style="background:#333;">লগআউট (Logout)</a>
     </div>
     """
-    return render_full_page(html, u=u)
+    return render_full_page(html, u=u, expiry_ts=expiry_ts)
 
 @app.route('/logout')
 def logout():
