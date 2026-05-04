@@ -1,9 +1,11 @@
 import os
 import telebot
-from flask import Flask, request, redirect, url_for, session, flash, render_template_string
+import logging
+from flask import Flask, request, redirect, url_for, session, flash, render_template_string, jsonify
 from flask_pymongo import PyMongo
 from bson.objectid import ObjectId
 from werkzeug.security import generate_password_hash, check_password_hash
+from functools import wraps
 
 # --- কনফিগারেশন ---
 TOKEN = "8655043839:AAFTUxq56taWUPU9uXRKuL7iyKLXRvk-WqM" 
@@ -12,140 +14,290 @@ MONGO_URI = "mongodb+srv://drama:drama@cluster0.sa4kvgu.mongodb.net/?appName=Clu
 BASE_URL = "https://indirect-meris-yeasinvai-95120fc6.koyeb.app" 
 
 app = Flask(__name__)
-app.secret_key = "premium_movie_system_ultra_final_v3"
+app.secret_key = "ULTRA_FINAL_FULL_MEGA_CODE_VERSION_PRO"
 app.config["MONGO_URI"] = MONGO_URI
-
-# মঙ্গোডিবি ইনিশিয়ালাইজেশন
 mongo = PyMongo(app)
+bot = telebot.TeleBot(TOKEN, threaded=False)
 
-# ইউজার স্টেট ট্র্যাকিং (বটের জন্য)
+# ইউজার স্টেট ট্র্যাকিং (মুভি এড করার জন্য)
 user_states = {}
 
-# --- প্রিমিয়াম ডার্ক থিম CSS স্টাইল ---
-PREMIUM_STYLE = """
+# --- বিস্তারিত প্রিমিয়াম সিএসএস (Design Section) ---
+FULL_CSS = """
 <style>
-    :root { --primary: #e50914; --bg: #0a0a0a; --card-bg: #141414; --text: #ffffff; --gray: #808080; }
-    * { box-sizing: border-box; }
-    body { background: var(--bg); color: var(--text); font-family: 'Roboto', sans-serif; margin: 0; padding-bottom: 70px; }
-    a { text-decoration: none; color: inherit; }
+    :root { 
+        --primary: #e50914; 
+        --bg: #050505; 
+        --card-bg: #121212; 
+        --text: #ffffff; 
+        --gray: #b3b3b3; 
+        --transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { 
+        background: var(--bg); 
+        color: var(--text); 
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; 
+        line-height: 1.6;
+        padding-bottom: 100px;
+        overflow-x: hidden;
+    }
     
-    #loader { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 10000; text-align: center; padding-top: 50vh; }
-    .spinner { width: 50px; height: 50px; border: 5px solid #333; border-top: 5px solid var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin: auto; }
+    /* Loader Animation */
+    #loader { 
+        display: none; 
+        position: fixed; 
+        top: 0; left: 0; 
+        width: 100%; height: 100%; 
+        background: rgba(0,0,0,0.95); 
+        z-index: 99999; 
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+    }
+    .spinner {
+        width: 60px; height: 60px;
+        border: 6px solid #222;
+        border-top: 6px solid var(--primary);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-    .notice-bar { background: var(--primary); color: #fff; padding: 10px; text-align: center; font-weight: bold; font-size: 14px; position: sticky; top: 0; z-index: 1000; }
-    .navbar { display: flex; justify-content: space-around; background: #000; padding: 15px 0; border-bottom: 1px solid #222; }
-    .navbar a { font-size: 14px; color: var(--gray); transition: 0.3s; cursor: pointer; }
+    /* Notice Bar */
+    .notice-bar { 
+        background: var(--primary); 
+        padding: 12px; 
+        text-align: center; 
+        font-weight: bold; 
+        font-size: 14px; 
+        position: sticky; top: 0; z-index: 1000;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    }
+
+    /* Navbar */
+    .navbar { 
+        display: flex; 
+        justify-content: space-around; 
+        background: rgba(0,0,0,0.9); 
+        padding: 15px 0; 
+        border-bottom: 1px solid #222;
+        backdrop-filter: blur(10px);
+    }
+    .navbar a { 
+        color: var(--gray); 
+        text-decoration: none; 
+        font-size: 14px; 
+        display: flex; flex-direction: column; align-items: center; gap: 5px;
+        transition: var(--transition);
+    }
+    .navbar a i { font-size: 18px; }
     .navbar a:hover, .navbar a.active { color: var(--primary); }
 
-    .container { padding: 15px; max-width: 1200px; margin: auto; }
-    .section-title { font-size: 18px; font-weight: bold; margin: 20px 0 10px; padding-left: 10px; border-left: 4px solid var(--primary); }
+    .container { padding: 20px; max-width: 1200px; margin: auto; }
 
-    .slider { display: flex; overflow-x: auto; gap: 15px; padding-bottom: 10px; scrollbar-width: none; }
+    /* Top Views Slider */
+    .section-title { 
+        font-size: 22px; 
+        font-weight: 800; 
+        margin: 30px 0 15px; 
+        border-left: 5px solid var(--primary); 
+        padding-left: 15px;
+        display: flex; justify-content: space-between; align-items: center;
+    }
+    .slider { 
+        display: flex; 
+        overflow-x: auto; 
+        gap: 20px; 
+        padding: 10px 0 20px; 
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+    }
     .slider::-webkit-scrollbar { display: none; }
-    .slider-item { min-width: 260px; height: 150px; border-radius: 8px; position: relative; overflow: hidden; background:#1a1a1a; cursor: pointer; }
-    .slider-item img { width: 100%; height: 100%; object-fit: cover; opacity: 0.6; }
-    .slider-info { position: absolute; bottom: 10px; left: 10px; font-weight: bold; text-shadow: 2px 2px 5px #000; }
+    .slider-item { 
+        min-width: 300px; 
+        height: 170px; 
+        border-radius: 12px; 
+        position: relative; 
+        overflow: hidden; 
+        background: #1a1a1a; 
+        cursor: pointer;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    }
+    .slider-item img { width: 100%; height: 100%; object-fit: cover; opacity: 0.6; transition: var(--transition); }
+    .slider-item:hover img { transform: scale(1.05); opacity: 0.8; }
+    .slider-info { 
+        position: absolute; bottom: 15px; left: 15px; 
+        font-weight: bold; font-size: 18px;
+        text-shadow: 2px 2px 10px #000;
+    }
 
-    .movie-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
-    .movie-card { background: var(--card-bg); border-radius: 10px; overflow: hidden; position: relative; border: 1px solid #222; transition: 0.3s; cursor: pointer; }
-    .movie-card:hover { transform: translateY(-5px); border-color: var(--primary); }
-    .movie-card img { width: 100%; height: 210px; object-fit: cover; }
-    .badge-cat { position: absolute; top: 8px; left: 8px; background: var(--primary); padding: 3px 7px; font-size: 10px; border-radius: 4px; font-weight: bold; }
-    .badge-views { position: absolute; bottom: 45px; right: 8px; background: rgba(0,0,0,0.7); padding: 3px 7px; font-size: 10px; border-radius: 4px; }
-    .movie-title { padding: 8px; font-size: 13px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* Movie Grid Layout */
+    .movie-grid { 
+        display: grid; 
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); 
+        gap: 20px; 
+    }
+    .movie-card { 
+        background: var(--card-bg); 
+        border-radius: 12px; 
+        overflow: hidden; 
+        position: relative; 
+        border: 1px solid #222; 
+        transition: var(--transition);
+        cursor: pointer;
+    }
+    .movie-card:hover { transform: translateY(-8px); border-color: var(--primary); box-shadow: 0 10px 20px rgba(0,0,0,0.5); }
+    .movie-card img { width: 100%; height: 240px; object-fit: cover; }
+    
+    .badge-top-left { position: absolute; top: 10px; left: 10px; background: var(--primary); padding: 4px 10px; font-size: 11px; border-radius: 5px; font-weight: bold; z-index: 10; }
+    .badge-bottom-right { position: absolute; bottom: 55px; right: 10px; background: rgba(0,0,0,0.8); padding: 4px 10px; font-size: 11px; border-radius: 5px; display: flex; align-items: center; gap: 5px; }
+    
+    .movie-info-box { padding: 12px; text-align: center; }
+    .movie-info-box h4 { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #fff; }
 
-    .pagination { display: flex; justify-content: center; gap: 10px; margin: 30px 0; }
-    .page-link { padding: 10px 15px; background: #222; border-radius: 5px; color: #fff; font-size: 14px; text-decoration: none; }
-    .page-link.active { background: var(--primary); }
+    /* Pagination Styling */
+    .pagination { display: flex; justify-content: center; align-items: center; gap: 15px; margin: 50px 0; }
+    .pagination a { 
+        padding: 12px 25px; 
+        background: #1a1a1a; 
+        border-radius: 8px; 
+        color: #fff; 
+        text-decoration: none; 
+        border: 1px solid #333;
+        transition: var(--transition);
+        font-weight: bold;
+    }
+    .pagination a:hover { background: var(--primary); border-color: var(--primary); }
+    .page-info { color: var(--gray); font-size: 14px; }
 
-    .card { background: var(--card-bg); padding: 20px; border-radius: 12px; max-width: 450px; margin: 20px auto; }
-    input { width: 100%; padding: 12px; margin: 10px 0; background: #222; border: 1px solid #333; color: #fff; border-radius: 6px; }
-    .btn { width: 100%; padding: 12px; background: var(--primary); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; display: block; text-align: center; text-decoration: none; }
-    .back-btn { display: inline-block; margin-bottom: 15px; color: var(--gray); font-size: 14px; cursor:pointer; }
+    /* Forms & Detail Cards */
+    .card { background: var(--card-bg); padding: 30px; border-radius: 15px; max-width: 500px; margin: 40px auto; border: 1px solid #222; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+    .card h3 { text-align: center; margin-bottom: 25px; color: var(--primary); font-size: 24px; }
+    input { 
+        width: 100%; padding: 15px; margin: 15px 0; 
+        background: #1a1a1a; border: 1px solid #333; 
+        color: #fff; border-radius: 10px; outline: none;
+    }
+    input:focus { border-color: var(--primary); }
+    .btn { 
+        width: 100%; padding: 15px; 
+        background: var(--primary); color: #fff; 
+        border: none; border-radius: 10px; 
+        cursor: pointer; font-weight: bold; font-size: 16px; 
+        text-decoration: none; display: block; text-align: center;
+        transition: var(--transition);
+    }
+    .btn:hover { background: #b20710; transform: scale(1.02); }
+    
+    .back-btn-container { margin-bottom: 20px; }
+    .back-btn { 
+        display: inline-flex; align-items: center; gap: 8px; 
+        color: var(--gray); text-decoration: none; font-size: 15px; 
+        transition: var(--transition);
+    }
+    .back-btn:hover { color: #fff; transform: translateX(-5px); }
 
-    .ep-btn { background: #222; border: 1px solid #333; padding: 15px; display: block; margin-bottom: 10px; border-radius: 8px; border-left: 4px solid var(--primary); transition: 0.3s; cursor: pointer; }
-    .ep-btn:hover { background: #282828; }
+    /* Episode Buttons */
+    .episode-list { margin-top: 30px; }
+    .ep-button { 
+        background: linear-gradient(45deg, #1a1a1a, #222); 
+        border: 1px solid #333; 
+        padding: 20px; 
+        display: flex; justify-content: space-between; align-items: center;
+        margin-bottom: 15px; border-radius: 12px; 
+        border-left: 6px solid var(--primary); 
+        color: #fff; text-decoration: none; font-weight: bold;
+        transition: var(--transition);
+    }
+    .ep-button:hover { background: #282828; transform: scale(1.02); box-shadow: 0 5px 15px rgba(229, 9, 20, 0.2); }
+    
+    /* Responsive */
+    @media (max-width: 600px) {
+        .movie-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+        .slider-item { min-width: 250px; }
+        .movie-card img { height: 200px; }
+    }
 </style>
+<script>
+    function showLoader() { 
+        document.getElementById('loader').style.display = 'flex'; 
+    }
+    window.addEventListener('pageshow', function(event) {
+        document.getElementById('loader').style.display = 'none';
+    });
+</script>
 """
 
-# --- ডাটাবেজ হেল্পার ---
+# --- ডাটাবেজ এবং সেটিংস হেল্পার ---
 def get_site_settings():
-    default = {"site_name": "PremiumMovie", "notice": "স্বাগতম!", "monetag_id": "10351894", "ad_limit": 2}
     try:
-        if mongo.db is None: return default
         s = mongo.db.settings.find_one({"type": "config"})
-        return s if s else default
-    except:
-        return default
+        if not s:
+            default = {"site_name": "PremiumMovie", "notice": "স্বাগতম আমাদের মুভি সাইটে!", "monetag_id": "10351894", "ad_limit": 2}
+            mongo.db.settings.insert_one({"type": "config", **default})
+            return default
+        return s
+    except Exception as e:
+        return {"site_name": "PremiumMovie", "notice": "Database Error!", "monetag_id": "10351894", "ad_limit": 2}
 
-# --- মাস্টার রেন্ডার ফাংশন (যাতে TemplateNotFound এরর না আসে) ---
-def render_master(body_content, **kwargs):
+# --- মাস্টার টেমপ্লেট মেকার ---
+def render_full_page(body_html, **kwargs):
     settings = get_site_settings()
-    
-    # বর্তমান পেজের নাম বের করা (এক্টিভ লিঙ্ক মার্ক করার জন্য)
-    endpoint = request.endpoint
+    current_path = request.path
     
     full_html = f"""
     <!DOCTYPE html>
-    <html>
+    <html lang="bn">
     <head>
+        <meta charset="UTF-8">
         <title>{{{{ settings.site_name }}}}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-        {PREMIUM_STYLE}
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        {FULL_CSS}
     </head>
     <body>
-        <div id="loader"><div class="spinner"></div><br>লোড হচ্ছে...</div>
+        <div id="loader"><div class="spinner"></div><p style="margin-top:20px; color:var(--primary); font-weight:bold;">লোডিং হচ্ছে...</p></div>
+        
         <div class="notice-bar">{{{{ settings.notice }}}}</div>
         
         <div class="navbar">
-            <a href="/" class="{'active' if endpoint == 'index' else ''}"><i class="fas fa-home"></i> হোম</a>
-            <a href="/profile" class="{'active' if endpoint == 'profile' else ''}"><i class="fas fa-user"></i> প্রোফাইল</a>
-            {{% if session.role == 'admin' %}}
-            <a href="/admin" class="{'active' if endpoint == 'admin' else ''}"><i class="fas fa-user-shield"></i> এডমিন</a>
+            <a href="/" class="{'active' if current_path == '/' else ''}"><i class="fas fa-home"></i> হোম</a>
+            <a href="/profile" class="{'active' if current_path == '/profile' else ''}"><i class="fas fa-user"></i> প্রোফাইল</a>
+            {{% if session.get('role') == 'admin' %}}
+            <a href="/admin" class="{'active' if current_path == '/admin' else ''}"><i class="fas fa-user-shield"></i> এডমিন</a>
             {{% endif %}}
         </div>
 
         <div class="container">
             {{% with messages = get_flashed_messages() %}}
-              {{% if messages %}}
-                {{% for message in messages %}}
-                  <p style="background:var(--primary); padding:10px; text-align:center; border-radius:5px;">{{{{ message }}}}</p>
+                {{% for m in messages %}}
+                    <div style="background:var(--primary); padding:15px; text-align:center; border-radius:10px; margin-bottom:20px; font-weight:bold;">{{{{ m }}}}</div>
                 {{% endfor %}}
-              {{% endif %}}
             {{% endwith %}}
             
-            {body_content}
+            {body_html}
         </div>
-
-        <script>
-            function showLoader() {{ document.getElementById('loader').style.display = 'block'; }}
-            window.addEventListener('pageshow', function() {{ document.getElementById('loader').style.display = 'none'; }});
-        </script>
     </body>
     </html>
     """
     return render_template_string(full_html, settings=settings, session=session, **kwargs)
 
-# --- সাইট রাউটস ---
+# --- সাইট লজিক রাউটস ---
 
 @app.route('/')
 def index():
     if 'user_id' not in session: return redirect(url_for('login'))
     
-    sliders = []
-    movies = []
     page = int(request.args.get('page', 1))
+    per_page = 20 if page == 1 else 50
+    skip = 0 if page == 1 else 20 + (page - 2) * 50
     
-    if mongo.db is not None:
-        sliders = list(mongo.db.movies.find().sort("views", -1).limit(20))
-        per_page = 20 if page == 1 else 50
-        skip = 0 if page == 1 else 20 + (page - 2) * 50
-        movies = list(mongo.db.movies.find().sort("_id", -1).skip(skip).limit(per_page))
+    sliders = list(mongo.db.movies.find().sort("views", -1).limit(20))
+    movies = list(mongo.db.movies.find().sort("_id", -1).skip(skip).limit(per_page))
 
     content = """
-    <div class="section-title">টপ ট্রেন্ডিং</div>
+    <div class="section-title">টপ ট্রেন্ডিং (ভিওড) <i class="fas fa-fire" style="color:orange;"></i></div>
     <div class="slider">
         {% for s in sliders %}
         <div class="slider-item" onclick="showLoader(); location.href='/movie/{{s._id}}'">
@@ -155,233 +307,303 @@ def index():
         {% endfor %}
     </div>
 
-    <div class="section-title">সদ্য আপলোড করা</div>
+    <div class="section-title">সদ্য আপলোড করা <i class="fas fa-clock"></i></div>
     <div class="movie-grid">
         {% for m in movies %}
         <div class="movie-card" onclick="showLoader(); location.href='/movie/{{m._id}}'">
-            <span class="badge-cat">{{m.category}}</span>
+            <div class="badge-top-left">{{m.category}}</div>
             <img src="{{m.poster}}">
-            <span class="badge-views"><i class="fas fa-eye"></i> {{m.views}}</span>
-            <div class="movie-title">{{m.title}}</div>
+            <div class="badge-bottom-right"><i class="fas fa-eye"></i> {{m.views}}</div>
+            <div class="movie-info-box">
+                <h4>{{m.title}}</h4>
+            </div>
         </div>
         {% endfor %}
     </div>
 
     <div class="pagination">
         {% if page > 1 %}
-        <a href="/?page={{page-1}}" class="page-link">Previous</a>
+            <a href="/?page={{page-1}}" onclick="showLoader()"><i class="fas fa-chevron-left"></i> Previous</a>
         {% endif %}
-        <a href="/?page={{page+1}}" class="page-link">Next</a>
+        <span class="page-info">পৃষ্ঠা নম্বর: {{page}}</span>
+        <a href="/?page={{page+1}}" onclick="showLoader()">Next Page <i class="fas fa-chevron-right"></i></a>
     </div>
     """
-    return render_master(content, sliders=sliders, movies=movies, page=page)
+    return render_full_page(content, sliders=sliders, movies=movies, page=page)
 
 @app.route('/movie/<m_id>')
 def movie_detail(m_id):
     if 'user_id' not in session: return redirect(url_for('login'))
     
-    if mongo.db is None: return "Database connection failed."
-    
-    movie = mongo.db.movies.find_one_and_update({"_id": ObjectId(m_id)}, {"$inc": {"views": 1}}, return_document=True)
-    if not movie: return "Movie not found."
+    movie = mongo.db.movies.find_one_and_update(
+        {"_id": ObjectId(m_id)}, 
+        {"$inc": {"views": 1}}, 
+        return_document=True
+    )
+    if not movie: return redirect('/')
     
     content = f"""
-    <div class="back-btn" onclick="showLoader(); history.back()"><i class="fas fa-arrow-left"></i> ফিরে যান</div>
+    <div class="back-btn-container">
+        <a href="/" onclick="showLoader();" class="back-btn"><i class="fas fa-arrow-left"></i> ব্যাক টু হোম</a>
+    </div>
+    
     <div style="text-align:center;">
-        <img src="{{{{ movie.poster }}}}" style="width:100%; max-width:350px; border-radius:12px; box-shadow: 0 5px 15px rgba(0,0,0,0.5);">
-        <h2 style="margin:20px 0 5px;">{{{{ movie.title }}}}</h2>
-        <p style="color:var(--gray); margin-bottom:20px;">{{{{ movie.category }}}} • {{{{ movie.views }}}} Views</p>
+        <img src="{{{{ movie.poster }}}}" style="width:100%; max-width:400px; border-radius:20px; border:3px solid #222; box-shadow: 0 15px 40px rgba(0,0,0,0.7);">
+        <h2 style="margin:25px 0 10px; font-size:28px;">{{{{ movie.title }}}}</h2>
+        <div style="margin-bottom:30px;">
+            <span style="background:#222; padding:5px 15px; border-radius:20px; font-size:14px; margin:0 5px;">{{{{ movie.category }}}}</span>
+            <span style="background:#222; padding:5px 15px; border-radius:20px; font-size:14px; margin:0 5px;"><i class="fas fa-eye"></i> {{{{ movie.views }}}} Views</span>
+        </div>
         
-        <div class="card" style="max-width:100%; text-align:left;">
-            <h4 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px;">এপিসোড ডাউনলোড লিঙ্ক:</h4>
-            {{% for fid in movie.episodes %}}
-            <div class="ep-btn" onclick="handleAd('{{{{ fid }}}}')">
-                <i class="fas fa-play-circle" style="color:var(--primary)"></i> &nbsp; Episode {{{{ loop.index0 + 1 }}}} - ডাউনলোড করুন
+        <div class="card" style="max-width:100%; text-align:left; border-top:4px solid var(--primary);">
+            <h4 style="margin-bottom:20px; border-bottom:1px solid #333; padding-bottom:10px;">ডাউনলোড এবং ওয়াচ লিঙ্ক:</h4>
+            <div class="episode-list">
+                {{% for fid in movie.episodes %}}
+                <a href="javascript:void(0)" class="ep-button" onclick="processAd('{{{{ fid }}}}')">
+                    <span>🎬 Episode {{{{ "%02d" % (loop.index0 + 1) }}}}</span>
+                    <i class="fas fa-download"></i>
+                </a>
+                {{% endfor %}}
             </div>
-            {{% endfor %}}
         </div>
     </div>
 
+    <!-- Monetag Integration -->
     <script src='//libtl.com/sdk.js' data-zone='{{{{ settings.monetag_id }}}}' data-sdk='show_{{{{ settings.monetag_id }}}}'></script>
+    
     <script>
-        function handleAd(fid) {{
-            let adLimit = {{{{ settings.ad_limit }}}};
-            let count = sessionStorage.getItem('ad_'+fid) || 0;
-            if (count < adLimit) {{
+        function processAd(fileId) {{
+            let limit = {{{{ settings.ad_limit }}}};
+            let sessionKey = 'ad_viewed_' + fileId;
+            let currentCount = parseInt(sessionStorage.getItem(sessionKey)) || 0;
+            
+            if (currentCount < limit) {{
+                // Show Monetag Ad
                 if (typeof window['show_' + {{{{ settings.monetag_id }}}}] === 'function') {{
                     window['show_' + {{{{ settings.monetag_id }}}}]();
                 }}
-                count++;
-                sessionStorage.setItem('ad_'+fid, count);
-                alert("এড লোড হচ্ছে... আর " + (adLimit - count) + " বার এড দেখলে লিঙ্ক পাবেন।");
+                currentCount++;
+                sessionStorage.setItem(sessionKey, currentCount);
+                alert("বিজ্ঞাপন লোড হচ্ছে... আর " + (limit - currentCount) + " বার দেখলে ডাউনলোড লিঙ্ক পাবেন।");
             }} else {{
                 showLoader();
-                window.location.href = "https://t.me/{BOT_USERNAME}?start=" + fid;
+                window.location.href = "https://t.me/{BOT_USERNAME}?start=" + fileId;
             }}
         }}
     </script>
     """
-    return render_master(content, movie=movie)
-
-@app.route('/profile')
-def profile():
-    if 'user_id' not in session: return redirect(url_for('login'))
-    user = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])}) if mongo.db else None
-    
-    if not user: return redirect('/logout')
-
-    content = """
-    <div class="card" style="text-align:center;">
-        <i class="fas fa-user-circle fa-5x" style="color:var(--gray); margin-bottom:15px;"></i>
-        <h2 style="margin:5px;">{{ user.fname }} {{ user.lname }}</h2>
-        <p style="color:var(--gray);">{{ user.number }}</p>
-        <div style="background:#222; padding:10px; border-radius:8px; margin:20px 0;">রোল: {{ user.role|upper }}</div>
-        <a href="/logout" class="btn" style="background:#333;">লগআউট করুন</a>
-    </div>
-    """
-    return render_master(content, user=user)
+    return render_full_page(content, movie=movie)
 
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
-    if session.get('role') != 'admin': return "এক্সেস নেই", 403
+    if session.get('role') != 'admin': 
+        flash("আপনার এডমিন অ্যাক্সেস নেই!")
+        return redirect('/')
+    
     if request.method == 'POST':
         action = request.form.get('action')
         if action == 'site':
-            mongo.db.settings.update_one({"type": "config"}, {"$set": {"site_name": request.form.get('site_name'), "notice": request.form.get('notice')}}, upsert=True)
+            mongo.db.settings.update_one({"type": "config"}, {"$set": {
+                "site_name": request.form.get('site_name'),
+                "notice": request.form.get('notice')
+            }}, upsert=True)
+            flash("সাইট সেটিংস আপডেট হয়েছে!")
         elif action == 'ad':
-            mongo.db.settings.update_one({"type": "config"}, {"$set": {"monetag_id": request.form.get('monetag_id'), "ad_limit": int(request.form.get('ad_limit'))}}, upsert=True)
-        flash("সফলভাবে আপডেট হয়েছে!")
+            mongo.db.settings.update_one({"type": "config"}, {"$set": {
+                "monetag_id": request.form.get('monetag_id'),
+                "ad_limit": int(request.form.get('ad_limit'))
+            }}, upsert=True)
+            flash("বিজ্ঞাপন সেটিংস আপডেট হয়েছে!")
         return redirect('/admin')
 
     content = """
+    <div class="back-btn-container"><a href="/" class="back-btn"><i class="fas fa-arrow-left"></i> ব্যাক টু সাইট</a></div>
     <div class="card">
-        <h3>সাইট সেটিংস</h3>
+        <h3><i class="fas fa-cog"></i> জেনারেল সেটিংস</h3>
         <form method="POST">
             <input type="hidden" name="action" value="site">
             সাইটের নাম: <input name="site_name" value="{{ settings.site_name }}">
-            নোটিশ টেক্সট: <input name="notice" value="{{ settings.notice }}">
-            <button class="btn">সেভ করুন</button>
+            নোটিশ বার টেক্সট: <input name="notice" value="{{ settings.notice }}">
+            <button class="btn" type="submit">সেভ জেনারেল সেটিংস</button>
         </form>
     </div>
-    <div class="card">
-        <h3>মনিটেগ এড সেটিংস</h3>
+    <div class="card" style="border-top:4px solid green;">
+        <h3><i class="fas fa-ad"></i> মনিটেগ সেটিংস</h3>
         <form method="POST">
             <input type="hidden" name="action" value="ad">
-            জোন আইডি (Zone ID): <input name="monetag_id" value="{{ settings.monetag_id }}">
-            এড দেখার লিমিট: <input type="number" name="ad_limit" value="{{ settings.ad_limit }}">
-            <button class="btn" style="background:green;">এড সেটিংস আপডেট</button>
+            মনিটেগ জোন আইডি (Zone ID): <input name="monetag_id" value="{{ settings.monetag_id }}">
+            এপিসোড প্রতি বিজ্ঞাপনের সংখ্যা: <input type="number" name="ad_limit" value="{{ settings.ad_limit }}">
+            <button class="btn" style="background:green;" type="submit">সেভ এড সেটিংস</button>
         </form>
     </div>
     """
-    return render_master(content)
+    return render_full_page(content)
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        fname, lname, number, password = request.form.get('fname'), request.form.get('lname'), request.form.get('number'), request.form.get('password')
-        if mongo.db and mongo.db.users.find_one({"number": number}): 
-            flash("এই নাম্বারটি ইতিমধ্যে আছে!")
-        elif mongo.db:
-            mongo.db.users.insert_one({"fname": fname, "lname": lname, "number": number, "password": generate_password_hash(password), "role": "user"})
-            flash("রেজিস্ট্রেশন সফল!")
+        fname, lname, num, pw = request.form.get('fname'), request.form.get('lname'), request.form.get('number'), request.form.get('password')
+        if mongo.db.users.find_one({"number": num}):
+            flash("এই নাম্বার দিয়ে অলরেডি অ্যাকাউন্ট আছে!")
+        else:
+            role = "admin" if mongo.db.users.count_documents({}) == 0 else "user"
+            mongo.db.users.insert_one({
+                "fname": fname, "lname": lname, "number": num, 
+                "password": generate_password_hash(pw), "role": role, "joined": datetime.datetime.now()
+            })
+            flash("রেজিস্ট্রেশন সফল! এখন লগিন করুন।")
             return redirect('/login')
-    content = """<div class="card"><h3>রেজিস্ট্রেশন</h3><form method="POST"><input name="fname" placeholder="ফাস্ট নাম" required><input name="lname" placeholder="লাস্ট নাম" required><input name="number" placeholder="নাম্বার" required><input type="password" name="password" placeholder="পাসওয়ার্ড" required><button class="btn">রেজিস্টার</button></form><br><center><a href="/login">লগিন করুন</a></center></div>"""
-    return render_master(content)
+    
+    html = """
+    <div class="card">
+        <h3>রেজিস্ট্রেশন করুন</h3>
+        <form method="POST">
+            <input name="fname" placeholder="ফাস্ট নাম" required>
+            <input name="lname" placeholder="লাস্ট নাম" required>
+            <input name="number" placeholder="মোবাইল নাম্বার" required>
+            <input type="password" name="password" placeholder="পাসওয়ার্ড" required>
+            <button class="btn" type="submit">নিবন্ধন করুন</button>
+        </form>
+        <div style="text-align:center; margin-top:20px;"><a href="/login" style="color:var(--gray); text-decoration:none;">ইতিমধ্যে অ্যাকাউন্ট আছে? লগিন করুন</a></div>
+    </div>
+    """
+    return render_full_page(html)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        if mongo.db:
-            user = mongo.db.users.find_one({"number": request.form.get('number')})
-            if user and check_password_hash(user['password'], request.form.get('password')):
-                session['user_id'], session['role'] = str(user['_id']), user.get('role', 'user')
-                return redirect('/')
-        flash("নাম্বার বা পাসওয়ার্ড ভুল!")
-    content = """<div class="card"><h3>লগিন</h3><form method="POST"><input name="number" placeholder="নাম্বার" required><input type="password" name="password" placeholder="পাসওয়ার্ড" required><button class="btn">লগিন</button></form><br><center><a href="/register">নতুন অ্যাকাউন্ট খুলুন</a></center></div>"""
-    return render_master(content)
+        num, pw = request.form.get('number'), request.form.get('password')
+        user = mongo.db.users.find_one({"number": num})
+        if user and check_password_hash(user['password'], pw):
+            session.permanent = True
+            session['user_id'], session['role'] = str(user['_id']), user.get('role', 'user')
+            return redirect('/')
+        flash("নাম্বার অথবা পাসওয়ার্ড ভুল!")
+    
+    html = """
+    <div class="card">
+        <h3>লগিন করুন</h3>
+        <form method="POST">
+            <input name="number" placeholder="মোবাইল নাম্বার" required>
+            <input type="password" name="password" placeholder="পাসওয়ার্ড" required>
+            <button class="btn" type="submit">প্রবেশ করুন</button>
+        </form>
+        <div style="text-align:center; margin-top:20px;"><a href="/register" style="color:var(--gray); text-decoration:none;">অ্যাকাউন্ট নেই? নতুন অ্যাকাউন্ট খুলুন</a></div>
+    </div>
+    """
+    return render_full_page(html)
+
+@app.route('/profile')
+def profile():
+    if 'user_id' not in session: return redirect('/login')
+    u = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
+    html = f"""
+    <div class="card" style="text-align:center;">
+        <div style="width:100px; height:100px; background:var(--primary); border-radius:50%; margin:auto; display:flex; justify-content:center; align-items:center; font-size:40px; margin-bottom:20px;">
+            <i class="fas fa-user"></i>
+        </div>
+        <h2 style="margin-bottom:10px;">{{{{ u.fname }}}} {{{{ u.lname }}}}</h2>
+        <p style="color:var(--gray); margin-bottom:10px;"><i class="fas fa-phone"></i> {{{{ u.number }}}}</p>
+        <p style="color:var(--primary); font-weight:bold; margin-bottom:20px;">পজিশন: {{{{ u.role|upper }}}}</p>
+        <a href="/logout" class="btn" style="background:#333;">লগআউট (Logout)</a>
+    </div>
+    """
+    return render_full_page(render_template_string(html, u=u))
 
 @app.route('/logout')
 def logout():
     session.clear()
     return redirect('/login')
 
-# --- টেলিগ্রাম বট লজিক ---
-bot = telebot.TeleBot(TOKEN, threaded=False)
+# --- টেলিগ্রাম বট (অ্যাডভান্সড ফাইল স্টোর সিস্টেম) ---
 
 @bot.message_handler(commands=['movie'])
-def bot_add_movie(message):
+def start_adding_movie(m):
     try:
-        data = message.text.split('/movie ')[1].split(',')
-        name, cat = data[0].strip(), data[1].strip()
-        user_states[message.chat.id] = {
-            "title": name, 
-            "category": cat, 
+        parts = m.text.split('/movie ')[1].split(',')
+        if len(parts) < 2: raise Exception()
+        
+        user_states[m.chat.id] = {
+            "title": parts[0].strip(), 
+            "category": parts[1].strip(), 
             "episodes": [], 
             "views": 0, 
             "status": "AWAITING_POSTER"
         }
-        bot.reply_to(message, f"🎬 মুভি: {name}\nএখন মুভির একটি পোস্টার (ফটো বা সরাসরি লিঙ্ক) পাঠান।")
+        bot.reply_to(m, f"🎬 মুভি/ড্রামা: *{parts[0].strip()}*\n📂 ক্যাটাগরি: *{parts[1].strip()}*\n\nএখন এই মুভির একটি *পোস্টার (ফটো)* অথবা সরাসরি লিঙ্কে ইমেজের লিঙ্ক পাঠান।", parse_mode="Markdown")
     except:
-        bot.reply_to(message, "ব্যবহার: /movie মুভির নাম, ক্যাটাগরি")
+        bot.reply_to(m, "⚠️ ভুল ফরম্যাট! \nনিয়ম: `/movie নাম, ক্যাটাগরি`", parse_mode="Markdown")
 
 @bot.message_handler(content_types=['photo', 'text', 'video', 'document'])
-def handle_bot_content(message):
-    chat_id = message.chat.id
-    if chat_id not in user_states: return
+def handle_bot_inputs(m):
+    cid = m.chat.id
+    if cid not in user_states: return
 
-    state = user_states[chat_id]
+    state = user_states[cid]
 
+    # পোস্টার আপলোড পার্ট
     if state["status"] == "AWAITING_POSTER":
-        if message.content_type == 'photo':
-            file_id = message.photo[-1].file_id
-            file_info = bot.get_file(file_id)
-            user_states[chat_id]["poster"] = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
-        elif message.content_type == 'text':
-            user_states[chat_id]["poster"] = message.text
+        if m.content_type == 'photo':
+            file_info = bot.get_file(m.photo[-1].file_id)
+            poster_url = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
+            user_states[cid]["poster"] = poster_url
+        elif m.content_type == 'text':
+            user_states[cid]["poster"] = m.text
         else:
-            bot.reply_to(message, "দয়া করে একটি ফটো অথবা ইমেজ লিঙ্ক পাঠান।")
+            bot.reply_to(m, "❌ দয়া করে একটি ফটো অথবা ইমেজ লিঙ্ক দিন!")
             return
         
-        user_states[chat_id]["status"] = "AWAITING_EPISODES"
-        bot.reply_to(message, "✅ পোস্টার সেভ হয়েছে!\nএখন এক এক করে মুভি ফাইল (Video/Document) পাঠান। সব শেষ হলে /Done লিখুন।")
+        user_states[cid]["status"] = "AWAITING_EPISODES"
+        bot.reply_to(m, "✅ পোস্টার যুক্ত হয়েছে!\nএখন এক এক করে মুভি ফাইলগুলো (ভিডিও বা ডকুমেন্ট) পাঠান। সব ফাইল পাঠানো শেষ হলে /Done কমান্ড দিন।")
 
+    # এপিসোড ফাইল পার্ট
     elif state["status"] == "AWAITING_EPISODES":
-        if message.content_type == 'text' and message.text == '/Done':
-            if mongo.db:
-                final_data = user_states[chat_id].copy()
-                del final_data["status"]
-                mongo.db.movies.insert_one(final_data)
-                del user_states[chat_id]
-                bot.reply_to(message, "🚀 মুভিটি সফলভাবে সাইটে পাবলিশ হয়েছে!")
-        elif message.content_type in ['video', 'document']:
-            fid = message.video.file_id if message.content_type == 'video' else message.document.file_id
-            user_states[chat_id]['episodes'].append(fid)
-            bot.reply_to(message, f"✅ Episode {len(user_states[chat_id]['episodes']):02d} যুক্ত হয়েছে। আরও থাকলে পাঠান নতুবা /Done লিখুন।")
+        if m.content_type == 'text' and m.text == '/Done':
+            if len(user_states[cid]["episodes"]) == 0:
+                bot.reply_to(m, "❌ অন্তত একটি ফাইল তো পাঠান!")
+                return
+            
+            final_data = user_states[cid].copy()
+            del final_data["status"]
+            mongo.db.movies.insert_one(final_data)
+            del user_states[cid]
+            bot.reply_to(m, "🚀 মুভিটি সফলভাবে ওয়েবসাইটে পাবলিশ হয়েছে!")
+            
+        elif m.content_type in ['video', 'document']:
+            fid = m.video.file_id if m.content_type == 'video' else m.document.file_id
+            user_states[cid]['episodes'].append(fid)
+            bot.reply_to(m, f"✅ এপিসোড {len(user_states[cid]['episodes']):02d} যুক্ত হয়েছে।\nআরও ফাইল থাকলে পাঠান নতুবা /Done লিখুন।")
 
 @bot.message_handler(commands=['start'])
-def bot_start(message):
-    args = message.text.split()
+def handle_bot_start(m):
+    args = m.text.split()
     if len(args) > 1:
-        fid = args[1]
-        try: bot.send_document(message.chat.id, fid, caption="আপনার অনুরোধ করা ফাইলটি তৈরি।")
-        except: bot.send_video(message.chat.id, fid, caption="আপনার অনুরোধ করা ফাইলটি তৈরি।")
+        file_id = args[1]
+        bot.send_chat_action(m.chat.id, 'upload_document')
+        try:
+            bot.send_document(m.chat.id, file_id, caption="🎬 আপনার ফাইলটি এখানে। ড্রামা স্টোর কিং এর সাথে থাকার জন্য ধন্যবাদ।")
+        except:
+            bot.send_video(m.chat.id, file_id, caption="🎬 আপনার ফাইলটি এখানে। ড্রামা স্টোর কিং এর সাথে থাকার জন্য ধন্যবাদ।")
     else:
-        bot.reply_to(message, "স্বাগতম! আমি ড্রামা স্টোর বট। মুভি এড করতে /movie ব্যবহার করুন।")
+        bot.reply_to(m, "👋 হ্যালো! মুভি এড করতে /movie ব্যবহার করুন।")
 
-# --- ওয়েব হুক ও রান ---
+# --- ওয়েব হুক ও প্রোডাকশন রান ---
+
 @app.route('/' + TOKEN, methods=['POST'])
-def getMessage():
-    bot.process_new_updates([telebot.types.Update.de_json(request.get_data().decode('utf-8'))])
-    return "!", 200
+def webhook_receiver():
+    update = telebot.types.Update.de_json(request.get_data().decode('utf-8'))
+    bot.process_new_updates([update])
+    return "OK", 200
 
 @app.route('/set_webhook')
-def set_webhook():
-    s = bot.set_webhook(url=BASE_URL + '/' + TOKEN)
-    return "Success" if s else "Failed"
+def setup_webhook():
+    success = bot.set_webhook(url=BASE_URL + '/' + TOKEN)
+    return "<h1>Webhook Connection Successfull!</h1>" if success else "<h1>Webhook Failed!</h1>"
 
-# Koyeb Handler
+# কোয়েব বা ভার্সেল এর জন্য হ্যান্ডলার
 handler = app
 
 if __name__ == '__main__':
+    import datetime
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
