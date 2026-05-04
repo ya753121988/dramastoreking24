@@ -2,6 +2,8 @@ import os
 import telebot
 import logging
 import datetime
+import threading
+import time
 from flask import Flask, request, redirect, url_for, session, flash, render_template_string, jsonify
 from flask_pymongo import PyMongo
 from bson.objectid import ObjectId
@@ -24,6 +26,14 @@ bot = telebot.TeleBot(TOKEN, threaded=False)
 
 # ইউজার স্টেট ট্র্যাকিং
 user_states = {}
+
+# --- ডিলিট ফাংশন ---
+def delete_msg(chat_id, message_id, delay):
+    time.sleep(delay * 60)
+    try:
+        bot.delete_message(chat_id, message_id)
+    except:
+        pass
 
 # --- বিস্তারিত প্রিমিয়াম সিএসএস (Design Section) ---
 FULL_CSS = """
@@ -187,7 +197,7 @@ FULL_CSS = """
 
     .card { background: var(--card-bg); padding: 30px; border-radius: 15px; max-width: 500px; margin: 40px auto; border: 1px solid #222; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
     .card h3 { text-align: center; margin-bottom: 25px; color: var(--primary); font-size: 24px; }
-    input { 
+    input, select { 
         width: 100%; padding: 15px; margin: 15px 0; 
         background: #1a1a1a; border: 1px solid #333; 
         color: #fff; border-radius: 10px; outline: none;
@@ -255,12 +265,17 @@ def get_site_settings():
     try:
         s = mongo.db.settings.find_one({"type": "config"})
         if not s:
-            default = {"site_name": "PremiumMovie", "notice": "স্বাগতম!", "monetag_id": "10351894", "ad_limit": 2, "lock_duration": 30, "file_channel": ""}
+            default = {
+                "site_name": "PremiumMovie", "notice": "স্বাগতম!", 
+                "monetag_id": "10351894", "ad_limit": 2, 
+                "lock_duration": 30, "file_channel": "",
+                "auto_delete_time": 5, "protect_content": "No"
+            }
             mongo.db.settings.insert_one({"type": "config", **default})
             return default
         return s
     except Exception as e:
-        return {"site_name": "PremiumMovie", "notice": "Error!", "monetag_id": "10351894", "ad_limit": 2, "lock_duration": 30, "file_channel": ""}
+        return {"site_name": "PremiumMovie", "notice": "Error!", "monetag_id": "10351894", "ad_limit": 2, "lock_duration": 30, "file_channel": "", "auto_delete_time": 5, "protect_content": "No"}
 
 # --- মাস্টার টেমপ্লেট মেকার ---
 def render_full_page(body_html, **kwargs):
@@ -511,7 +526,9 @@ def admin():
                 "monetag_id": request.form.get('monetag_id'),
                 "ad_limit": int(request.form.get('ad_limit')),
                 "lock_duration": int(request.form.get('lock_duration')),
-                "file_channel": request.form.get('file_channel')
+                "file_channel": request.form.get('file_channel'),
+                "auto_delete_time": int(request.form.get('auto_delete_time')),
+                "protect_content": request.form.get('protect_content')
             }}, upsert=True)
             flash("বিজ্ঞাপন ও স্টোরেজ সেটিংস আপডেট হয়েছে!")
         elif action == 'delete_movie':
@@ -540,6 +557,12 @@ def admin():
             এপিসোড প্রতি বিজ্ঞাপন: <input type="number" name="ad_limit" value="{{ settings.ad_limit }}">
             লক ডিউরেশন (মিনিট): <input type="number" name="lock_duration" value="{{ settings.lock_duration }}">
             ফাইল চ্যানেল আইডি: <input name="file_channel" value="{{ settings.file_channel }}">
+            অটো ডিলিট টাইম (মিনিট): <input type="number" name="auto_delete_time" value="{{ settings.auto_delete_time }}">
+            ফরওয়ার্ড বন্ধ করবেন?
+            <select name="protect_content">
+                <option value="Yes" {% if settings.protect_content == 'Yes' %}selected{% endif %}>Yes (Lock Forward)</option>
+                <option value="No" {% if settings.protect_content == 'No' %}selected{% endif %}>No (Allow Forward)</option>
+            </select>
             <button class="btn" style="background:green;" type="submit">সেভ অ্যাড সেটিংস</button>
         </form>
     </div>
@@ -654,14 +677,31 @@ def handle_bot_start(m):
     
     if "file_" in text:
         try:
-            # লিঙ্ক থেকে Message ID বের করা (যেমন: file_12 থেকে 12)
             msg_id = int(text.split("file_")[1])
             if not channel_id:
                 bot.reply_to(m, "❌ স্টোরেজ চ্যানেল সেট করা নেই!")
                 return
             
+            # মুভি ইনফো বের করা ক্যাপশনের জন্য
+            movie = mongo.db.movies.find_one({"episodes": msg_id})
+            ep_index = 0
+            if movie:
+                ep_index = movie['episodes'].index(msg_id) + 1
+            
+            movie_name = movie['title'] if movie else "Unknown Movie"
+            caption = f"🎬 {movie_name}\n🎞 Episode: {ep_index:02d}\n\nধন্যবাদ ড্রামা স্টোর কিং এর সাথে থাকার জন্য।"
+            
+            protect = True if settings.get('protect_content') == "Yes" else False
+            
             # সরাসরি চ্যানেল থেকে মেসেজ কপি করে পাঠানো
-            bot.copy_message(m.chat.id, channel_id, msg_id, caption="🎬 ড্রামা স্টোর কিং এর সাথে থাকার জন্য ধন্যবাদ।")
+            sent_msg = bot.copy_message(m.chat.id, channel_id, msg_id, caption=caption, protect_content=protect)
+            
+            # ফাইল পাঠানো শেষে মেসেজ
+            bot.send_message(m.chat.id, f"✅ ফাইলটি উপরে দেওয়া হয়েছে।\n⚠️ কপিরাইট এড়াতে এটি {settings.get('auto_delete_time')} মিনিট পর অটো ডিলিট হয়ে যাবে।")
+            
+            # অটো ডিলিট থ্রেড
+            threading.Thread(target=delete_msg, args=(m.chat.id, sent_msg.message_id, int(settings.get('auto_delete_time', 5)))).start()
+
         except Exception as e:
             bot.reply_to(m, "❌ ফাইলটি পাওয়া যায়নি অথবা চ্যানেল থেকে ডিলিট করা হয়েছে।")
     else:
@@ -707,13 +747,11 @@ def handle_bot_inputs(m):
                 bot.reply_to(m, "❌ এডমিন প্যানেলে স্টোরেজ চ্যানেল আইডি সেট করা নেই।")
                 return
             try:
-                # চ্যানেলে পাঠানো এবং Message ID টি সেভ করা
                 if m.content_type == 'video':
                     sent = bot.send_video(channel_id, m.video.file_id)
                 else:
                     sent = bot.send_document(channel_id, m.document.file_id)
                 
-                # আমরা এখানে Message ID সেভ করছি (যা একটি ছোট সংখ্যা হবে)
                 user_states[cid]['episodes'].append(sent.message_id)
                 bot.reply_to(m, f"✅ এপিসোড {len(user_states[cid]['episodes'])} যুক্ত হয়েছে (ID: {sent.message_id})। আরও থাকলে পাঠান নতুবা /Done দিন।")
             except Exception as e:
