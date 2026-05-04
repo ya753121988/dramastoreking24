@@ -444,7 +444,7 @@ def index():
         </a>
         <a href="/tasks" class="menu-btn btn-task">
             <i class="fas fa-tasks fa-lg"></i>
-            <span>এড টাস্ক</span>
+            <span>কয়েন ইনকাম</span>
         </a>
     </div>
 
@@ -529,17 +529,31 @@ def tasks():
         function handleTask(taskId, type, timerSec) {
             currentTaskId = taskId;
             
-            // নতুন ট্যাবে লিঙ্ক খোলা (যদি লিঙ্ক টাস্ক হয়)
             fetch('/get-task-data/' + taskId)
             .then(res => res.json())
             .then(data => {
                 if(type === 'link') {
                     window.open(data.content, '_blank');
                 } else if(type === 'monetag') {
-                    // স্ক্রিপ্ট থাকলে এখানে ইনজেক্ট করা যেতে পারে
-                    const div = document.createElement('div');
-                    div.innerHTML = data.content;
-                    document.body.appendChild(div);
+                    // FIX: মনিটেগ স্ক্রিপ্ট রান করানোর সঠিক পদ্ধতি
+                    const tempDiv = document.createElement('div');
+                    tempDiv.innerHTML = data.content;
+                    const scripts = tempDiv.getElementsByTagName('script');
+                    for (let i = 0; i < scripts.length; i++) {
+                        const newScript = document.createElement('script');
+                        Array.from(scripts[i].attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
+                        document.body.appendChild(newScript);
+                        
+                        // SDK ফাংশন কল (যেমন: show_10351894)
+                        const sdkFunc = scripts[i].getAttribute('data-sdk');
+                        if (sdkFunc) {
+                            setTimeout(() => {
+                                if (typeof window[sdkFunc] === 'function') {
+                                    window[sdkFunc]();
+                                }
+                            }, 1500);
+                        }
+                    }
                 }
             });
 
@@ -608,8 +622,6 @@ def claim_task_new(tid):
     })
     
     return jsonify({"success": True, "reward": t.get('reward', 10)})
-
-# --- আগের সব রাউটস অক্ষুণ্ণ রাখা হয়েছে ---
 
 @app.route('/buy-premium')
 def buy_premium():
