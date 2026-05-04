@@ -12,7 +12,7 @@ MONGO_URI = "mongodb+srv://drama:drama@cluster0.sa4kvgu.mongodb.net/?appName=Clu
 BASE_URL = "https://indirect-meris-yeasinvai-95120fc6.koyeb.app" 
 
 app = Flask(__name__)
-app.secret_key = "premium_movie_system_key_99_final_v2"
+app.secret_key = "premium_movie_system_ultra_final_v3"
 app.config["MONGO_URI"] = MONGO_URI
 
 # মঙ্গোডিবি ইনিশিয়ালাইজেশন
@@ -35,7 +35,7 @@ PREMIUM_STYLE = """
 
     .notice-bar { background: var(--primary); color: #fff; padding: 10px; text-align: center; font-weight: bold; font-size: 14px; position: sticky; top: 0; z-index: 1000; }
     .navbar { display: flex; justify-content: space-around; background: #000; padding: 15px 0; border-bottom: 1px solid #222; }
-    .navbar a { font-size: 14px; color: var(--gray); transition: 0.3s; }
+    .navbar a { font-size: 14px; color: var(--gray); transition: 0.3s; cursor: pointer; }
     .navbar a:hover, .navbar a.active { color: var(--primary); }
 
     .container { padding: 15px; max-width: 1200px; margin: auto; }
@@ -43,12 +43,12 @@ PREMIUM_STYLE = """
 
     .slider { display: flex; overflow-x: auto; gap: 15px; padding-bottom: 10px; scrollbar-width: none; }
     .slider::-webkit-scrollbar { display: none; }
-    .slider-item { min-width: 260px; height: 150px; border-radius: 8px; position: relative; overflow: hidden; background:#1a1a1a; }
+    .slider-item { min-width: 260px; height: 150px; border-radius: 8px; position: relative; overflow: hidden; background:#1a1a1a; cursor: pointer; }
     .slider-item img { width: 100%; height: 100%; object-fit: cover; opacity: 0.6; }
     .slider-info { position: absolute; bottom: 10px; left: 10px; font-weight: bold; text-shadow: 2px 2px 5px #000; }
 
     .movie-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
-    .movie-card { background: var(--card-bg); border-radius: 10px; overflow: hidden; position: relative; border: 1px solid #222; transition: 0.3s; }
+    .movie-card { background: var(--card-bg); border-radius: 10px; overflow: hidden; position: relative; border: 1px solid #222; transition: 0.3s; cursor: pointer; }
     .movie-card:hover { transform: translateY(-5px); border-color: var(--primary); }
     .movie-card img { width: 100%; height: 210px; object-fit: cover; }
     .badge-cat { position: absolute; top: 8px; left: 8px; background: var(--primary); padding: 3px 7px; font-size: 10px; border-radius: 4px; font-weight: bold; }
@@ -56,58 +56,17 @@ PREMIUM_STYLE = """
     .movie-title { padding: 8px; font-size: 13px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
     .pagination { display: flex; justify-content: center; gap: 10px; margin: 30px 0; }
-    .page-link { padding: 10px 15px; background: #222; border-radius: 5px; color: #fff; font-size: 14px; }
+    .page-link { padding: 10px 15px; background: #222; border-radius: 5px; color: #fff; font-size: 14px; text-decoration: none; }
     .page-link.active { background: var(--primary); }
 
     .card { background: var(--card-bg); padding: 20px; border-radius: 12px; max-width: 450px; margin: 20px auto; }
     input { width: 100%; padding: 12px; margin: 10px 0; background: #222; border: 1px solid #333; color: #fff; border-radius: 6px; }
-    .btn { width: 100%; padding: 12px; background: var(--primary); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; display: block; text-align: center; }
+    .btn { width: 100%; padding: 12px; background: var(--primary); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; display: block; text-align: center; text-decoration: none; }
     .back-btn { display: inline-block; margin-bottom: 15px; color: var(--gray); font-size: 14px; cursor:pointer; }
 
     .ep-btn { background: #222; border: 1px solid #333; padding: 15px; display: block; margin-bottom: 10px; border-radius: 8px; border-left: 4px solid var(--primary); transition: 0.3s; cursor: pointer; }
     .ep-btn:hover { background: #282828; }
 </style>
-"""
-
-# HTML Layout
-LAYOUT_TEMPLATE = """
-<!DOCTYPE html>
-<html>
-<head>
-    <title>{{ settings.site_name }}</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    """ + PREMIUM_STYLE + """
-</head>
-<body>
-    <div id="loader"><div class="spinner"></div><br>লোড হচ্ছে...</div>
-    <div class="notice-bar">{{ settings.notice }}</div>
-    
-    <div class="navbar">
-        <a href="/" class="{{ 'active' if request.endpoint == 'index' }}"><i class="fas fa-home"></i> হোম</a>
-        <a href="/profile" class="{{ 'active' if request.endpoint == 'profile' }}"><i class="fas fa-user"></i> প্রোফাইল</a>
-        {% if session.role == 'admin' %}
-        <a href="/admin" class="{{ 'active' if request.endpoint == 'admin' }}"><i class="fas fa-user-shield"></i> এডমিন</a>
-        {% endif %}
-    </div>
-
-    <div class="container">
-        {% with messages = get_flashed_messages() %}
-          {% if messages %}
-            {% for message in messages %}
-              <p style="background:var(--primary); padding:10px; text-align:center; border-radius:5px;">{{ message }}</p>
-            {% endfor %}
-          {% endif %}
-        {% endwith %}
-        {% block content %}{% endblock %}
-    </div>
-
-    <script>
-        function showLoader() { document.getElementById('loader').style.display = 'block'; }
-        window.addEventListener('pageshow', function() { document.getElementById('loader').style.display = 'none'; });
-    </script>
-</body>
-</html>
 """
 
 # --- ডাটাবেজ হেল্পার ---
@@ -120,12 +79,60 @@ def get_site_settings():
     except:
         return default
 
-# --- রাউটস ---
+# --- মাস্টার রেন্ডার ফাংশন (যাতে TemplateNotFound এরর না আসে) ---
+def render_master(body_content, **kwargs):
+    settings = get_site_settings()
+    
+    # বর্তমান পেজের নাম বের করা (এক্টিভ লিঙ্ক মার্ক করার জন্য)
+    endpoint = request.endpoint
+    
+    full_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>{{{{ settings.site_name }}}}</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+        {PREMIUM_STYLE}
+    </head>
+    <body>
+        <div id="loader"><div class="spinner"></div><br>লোড হচ্ছে...</div>
+        <div class="notice-bar">{{{{ settings.notice }}}}</div>
+        
+        <div class="navbar">
+            <a href="/" class="{'active' if endpoint == 'index' else ''}"><i class="fas fa-home"></i> হোম</a>
+            <a href="/profile" class="{'active' if endpoint == 'profile' else ''}"><i class="fas fa-user"></i> প্রোফাইল</a>
+            {{% if session.role == 'admin' %}}
+            <a href="/admin" class="{'active' if endpoint == 'admin' else ''}"><i class="fas fa-user-shield"></i> এডমিন</a>
+            {{% endif %}}
+        </div>
+
+        <div class="container">
+            {{% with messages = get_flashed_messages() %}}
+              {{% if messages %}}
+                {{% for message in messages %}}
+                  <p style="background:var(--primary); padding:10px; text-align:center; border-radius:5px;">{{{{ message }}}}</p>
+                {{% endfor %}}
+              {{% endif %}}
+            {{% endwith %}}
+            
+            {body_content}
+        </div>
+
+        <script>
+            function showLoader() {{ document.getElementById('loader').style.display = 'block'; }}
+            window.addEventListener('pageshow', function() {{ document.getElementById('loader').style.display = 'none'; }});
+        </script>
+    </body>
+    </html>
+    """
+    return render_template_string(full_html, settings=settings, session=session, **kwargs)
+
+# --- সাইট রাউটস ---
 
 @app.route('/')
 def index():
     if 'user_id' not in session: return redirect(url_for('login'))
-    settings = get_site_settings()
     
     sliders = []
     movies = []
@@ -138,8 +145,6 @@ def index():
         movies = list(mongo.db.movies.find().sort("_id", -1).skip(skip).limit(per_page))
 
     content = """
-    {% extends "layout" %}
-    {% block content %}
     <div class="section-title">টপ ট্রেন্ডিং</div>
     <div class="slider">
         {% for s in sliders %}
@@ -168,72 +173,64 @@ def index():
         {% endif %}
         <a href="/?page={{page+1}}" class="page-link">Next</a>
     </div>
-    {% endblock %}
     """
-    return render_template_string(content, layout=LAYOUT_TEMPLATE, settings=settings, sliders=sliders, movies=movies, page=page)
+    return render_master(content, sliders=sliders, movies=movies, page=page)
 
 @app.route('/movie/<m_id>')
 def movie_detail(m_id):
     if 'user_id' not in session: return redirect(url_for('login'))
-    settings = get_site_settings()
     
     if mongo.db is None: return "Database connection failed."
     
     movie = mongo.db.movies.find_one_and_update({"_id": ObjectId(m_id)}, {"$inc": {"views": 1}}, return_document=True)
     if not movie: return "Movie not found."
     
-    content = """
-    {% extends "layout" %}
-    {% block content %}
+    content = f"""
     <div class="back-btn" onclick="showLoader(); history.back()"><i class="fas fa-arrow-left"></i> ফিরে যান</div>
     <div style="text-align:center;">
-        <img src="{{ movie.poster }}" style="width:100%; max-width:350px; border-radius:12px; box-shadow: 0 5px 15px rgba(0,0,0,0.5);">
-        <h2 style="margin:20px 0 5px;">{{ movie.title }}</h2>
-        <p style="color:var(--gray); margin-bottom:20px;">{{ movie.category }} • {{ movie.views }} Views</p>
+        <img src="{{{{ movie.poster }}}}" style="width:100%; max-width:350px; border-radius:12px; box-shadow: 0 5px 15px rgba(0,0,0,0.5);">
+        <h2 style="margin:20px 0 5px;">{{{{ movie.title }}}}</h2>
+        <p style="color:var(--gray); margin-bottom:20px;">{{{{ movie.category }}}} • {{{{ movie.views }}}} Views</p>
         
         <div class="card" style="max-width:100%; text-align:left;">
             <h4 style="margin-top:0; border-bottom:1px solid #333; padding-bottom:10px;">এপিসোড ডাউনলোড লিঙ্ক:</h4>
-            {% for fid in movie.episodes %}
-            <div class="ep-btn" onclick="handleAd('{{ fid }}')">
-                <i class="fas fa-play-circle" style="color:var(--primary)"></i> &nbsp; Episode {{ loop.index0 + 1 }} - ডাউনলোড করুন
+            {{% for fid in movie.episodes %}}
+            <div class="ep-btn" onclick="handleAd('{{{{ fid }}}}')">
+                <i class="fas fa-play-circle" style="color:var(--primary)"></i> &nbsp; Episode {{{{ loop.index0 + 1 }}}} - ডাউনলোড করুন
             </div>
-            {% endfor %}
+            {{% endfor %}}
         </div>
     </div>
 
-    <script src='//libtl.com/sdk.js' data-zone='{{ settings.monetag_id }}' data-sdk='show_{{ settings.monetag_id }}'></script>
+    <script src='//libtl.com/sdk.js' data-zone='{{{{ settings.monetag_id }}}}' data-sdk='show_{{{{ settings.monetag_id }}}}'></script>
     <script>
-        function handleAd(fid) {
-            let adLimit = {{ settings.ad_limit }};
+        function handleAd(fid) {{
+            let adLimit = {{{{ settings.ad_limit }}}};
             let count = sessionStorage.getItem('ad_'+fid) || 0;
-            if (count < adLimit) {
-                if (typeof window['show_' + {{ settings.monetag_id }}] === 'function') {
-                    window['show_' + {{ settings.monetag_id }}]();
-                }
+            if (count < adLimit) {{
+                if (typeof window['show_' + {{{{ settings.monetag_id }}}}] === 'function') {{
+                    window['show_' + {{{{ settings.monetag_id }}}}]();
+                }}
                 count++;
                 sessionStorage.setItem('ad_'+fid, count);
                 alert("এড লোড হচ্ছে... আর " + (adLimit - count) + " বার এড দেখলে লিঙ্ক পাবেন।");
-            } else {
+            }} else {{
                 showLoader();
-                window.location.href = "https://t.me/{{ bot_username }}?start=" + fid;
-            }
-        }
+                window.location.href = "https://t.me/{BOT_USERNAME}?start=" + fid;
+            }}
+        }}
     </script>
-    {% endblock %}
     """
-    return render_template_string(content, layout=LAYOUT_TEMPLATE, settings=settings, movie=movie, bot_username=BOT_USERNAME)
+    return render_master(content, movie=movie)
 
 @app.route('/profile')
 def profile():
     if 'user_id' not in session: return redirect(url_for('login'))
-    settings = get_site_settings()
     user = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])}) if mongo.db else None
     
     if not user: return redirect('/logout')
 
     content = """
-    {% extends "layout" %}
-    {% block content %}
     <div class="card" style="text-align:center;">
         <i class="fas fa-user-circle fa-5x" style="color:var(--gray); margin-bottom:15px;"></i>
         <h2 style="margin:5px;">{{ user.fname }} {{ user.lname }}</h2>
@@ -241,14 +238,12 @@ def profile():
         <div style="background:#222; padding:10px; border-radius:8px; margin:20px 0;">রোল: {{ user.role|upper }}</div>
         <a href="/logout" class="btn" style="background:#333;">লগআউট করুন</a>
     </div>
-    {% endblock %}
     """
-    return render_template_string(content, layout=LAYOUT_TEMPLATE, settings=settings, user=user)
+    return render_master(content, user=user)
 
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
     if session.get('role') != 'admin': return "এক্সেস নেই", 403
-    settings = get_site_settings()
     if request.method == 'POST':
         action = request.form.get('action')
         if action == 'site':
@@ -259,8 +254,6 @@ def admin():
         return redirect('/admin')
 
     content = """
-    {% extends "layout" %}
-    {% block content %}
     <div class="card">
         <h3>সাইট সেটিংস</h3>
         <form method="POST">
@@ -279,13 +272,11 @@ def admin():
             <button class="btn" style="background:green;">এড সেটিংস আপডেট</button>
         </form>
     </div>
-    {% endblock %}
     """
-    return render_template_string(content, layout=LAYOUT_TEMPLATE, settings=settings)
+    return render_master(content)
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
-    settings = get_site_settings()
     if request.method == 'POST':
         fname, lname, number, password = request.form.get('fname'), request.form.get('lname'), request.form.get('number'), request.form.get('password')
         if mongo.db and mongo.db.users.find_one({"number": number}): 
@@ -294,17 +285,11 @@ def register():
             mongo.db.users.insert_one({"fname": fname, "lname": lname, "number": number, "password": generate_password_hash(password), "role": "user"})
             flash("রেজিস্ট্রেশন সফল!")
             return redirect('/login')
-    content = """
-    {% extends "layout" %}
-    {% block content %}
-    <div class="card"><h3>রেজিস্ট্রেশন</h3><form method="POST"><input name="fname" placeholder="ফাস্ট নাম" required><input name="lname" placeholder="লাস্ট নাম" required><input name="number" placeholder="নাম্বার" required><input type="password" name="password" placeholder="পাসওয়ার্ড" required><button class="btn">রেজিস্টার</button></form><br><center><a href="/login">লগিন করুন</a></center></div>
-    {% endblock %}
-    """
-    return render_template_string(content, layout=LAYOUT_TEMPLATE, settings=settings)
+    content = """<div class="card"><h3>রেজিস্ট্রেশন</h3><form method="POST"><input name="fname" placeholder="ফাস্ট নাম" required><input name="lname" placeholder="লাস্ট নাম" required><input name="number" placeholder="নাম্বার" required><input type="password" name="password" placeholder="পাসওয়ার্ড" required><button class="btn">রেজিস্টার</button></form><br><center><a href="/login">লগিন করুন</a></center></div>"""
+    return render_master(content)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    settings = get_site_settings()
     if request.method == 'POST':
         if mongo.db:
             user = mongo.db.users.find_one({"number": request.form.get('number')})
@@ -312,13 +297,8 @@ def login():
                 session['user_id'], session['role'] = str(user['_id']), user.get('role', 'user')
                 return redirect('/')
         flash("নাম্বার বা পাসওয়ার্ড ভুল!")
-    content = """
-    {% extends "layout" %}
-    {% block content %}
-    <div class="card"><h3>লগিন</h3><form method="POST"><input name="number" placeholder="নাম্বার" required><input type="password" name="password" placeholder="পাসওয়ার্ড" required><button class="btn">লগিন</button></form><br><center><a href="/register">নতুন অ্যাকাউন্ট খুলুন</a></center></div>
-    {% endblock %}
-    """
-    return render_template_string(content, layout=LAYOUT_TEMPLATE, settings=settings)
+    content = """<div class="card"><h3>লগিন</h3><form method="POST"><input name="number" placeholder="নাম্বার" required><input type="password" name="password" placeholder="পাসওয়ার্ড" required><button class="btn">লগিন</button></form><br><center><a href="/register">নতুন অ্যাকাউন্ট খুলুন</a></center></div>"""
+    return render_master(content)
 
 @app.route('/logout')
 def logout():
@@ -333,7 +313,6 @@ def bot_add_movie(message):
     try:
         data = message.text.split('/movie ')[1].split(',')
         name, cat = data[0].strip(), data[1].strip()
-        # এখানে স্টেট পরিবর্তন করে পোস্টারের জন্য অপেক্ষা করা হচ্ছে
         user_states[message.chat.id] = {
             "title": name, 
             "category": cat, 
@@ -348,21 +327,15 @@ def bot_add_movie(message):
 @bot.message_handler(content_types=['photo', 'text', 'video', 'document'])
 def handle_bot_content(message):
     chat_id = message.chat.id
-    if chat_id not in user_states:
-        if message.content_type == 'text' and message.text.startswith('/start'):
-            # স্টার্ট হ্যান্ডলার নিচে আলাদা আছে, এখানে কিছু করার দরকার নেই
-            return
-        return
+    if chat_id not in user_states: return
 
     state = user_states[chat_id]
 
-    # পোস্টার হ্যান্ডলিং
     if state["status"] == "AWAITING_POSTER":
         if message.content_type == 'photo':
             file_id = message.photo[-1].file_id
             file_info = bot.get_file(file_id)
-            poster_url = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
-            user_states[chat_id]["poster"] = poster_url
+            user_states[chat_id]["poster"] = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
         elif message.content_type == 'text':
             user_states[chat_id]["poster"] = message.text
         else:
@@ -372,18 +345,14 @@ def handle_bot_content(message):
         user_states[chat_id]["status"] = "AWAITING_EPISODES"
         bot.reply_to(message, "✅ পোস্টার সেভ হয়েছে!\nএখন এক এক করে মুভি ফাইল (Video/Document) পাঠান। সব শেষ হলে /Done লিখুন।")
 
-    # এপিসোড ফাইল হ্যান্ডলিং
     elif state["status"] == "AWAITING_EPISODES":
         if message.content_type == 'text' and message.text == '/Done':
             if mongo.db:
-                # স্টেট থেকে স্ট্যাটাস বাদ দিয়ে ডিবিতে সেভ
                 final_data = user_states[chat_id].copy()
                 del final_data["status"]
                 mongo.db.movies.insert_one(final_data)
                 del user_states[chat_id]
                 bot.reply_to(message, "🚀 মুভিটি সফলভাবে সাইটে পাবলিশ হয়েছে!")
-            else:
-                bot.reply_to(message, "ডাটাবেজ কানেকশন ইরর!")
         elif message.content_type in ['video', 'document']:
             fid = message.video.file_id if message.content_type == 'video' else message.document.file_id
             user_states[chat_id]['episodes'].append(fid)
@@ -410,10 +379,9 @@ def set_webhook():
     s = bot.set_webhook(url=BASE_URL + '/' + TOKEN)
     return "Success" if s else "Failed"
 
-# Koyeb/Vercel Handler
+# Koyeb Handler
 handler = app
 
 if __name__ == '__main__':
-    # Koyeb এর জন্য পোর্ট 8080 বা এনভায়রনমেন্ট পোর্ট ব্যবহার করা ভালো
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
