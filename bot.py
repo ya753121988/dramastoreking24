@@ -9,11 +9,11 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 
 # --- কনফিগারেশন ---
-TOKEN = "8655043839:AAFTUxq56taWUPU9uXRKuL7iyKLXRvk-WqM" 
+TOKEN = "8655043839:AAFTUxq56taUPU9uXRKuL7iyKLXRvk-WqM" 
 BOT_USERNAME = "dramastorkingsbot" 
 # ডাটাবেজ নাম 'DramaStoreDB' যুক্ত করা হয়েছে যাতে ডাটা মিসিং না হয়
 MONGO_URI = "mongodb+srv://drama:drama@cluster0.sa4kvgu.mongodb.net/DramaStoreDB?retryWrites=true&w=majority&appName=Cluster0"
-BASE_URL = "https://indirect-meris-yeasinvai-95120fc6.koyeb.app" 
+BASE_URL = "https://indirect-meris-yeasinvai-95120fc6.app" 
 
 app = Flask(__name__)
 app.secret_key = "ULTRA_FINAL_FULL_MEGA_CODE_VERSION_PRO"
@@ -243,16 +243,19 @@ def get_site_settings():
         s = mongo.db.settings.find_one({"type": "config"})
         if not s:
             # ডিফল্ট lock_duration মিনিট হিসেবে ৩০ রাখা হলো
-            default = {"site_name": "PremiumMovie", "notice": "স্বাগতম!", "monetag_id": "10351894", "ad_limit": 2, "lock_duration": 30}
+            default = {"site_name": "PremiumMovie", "notice": "স্বাগতম!", "monetag_id": "10351894", "ad_limit": 2, "lock_duration": 30, "file_channel": ""}
             mongo.db.settings.insert_one({"type": "config", **default})
             return default
         # যদি lock_duration না থাকে তবে আপডেট করা
         if "lock_duration" not in s:
             mongo.db.settings.update_one({"type": "config"}, {"$set": {"lock_duration": 30}})
             s["lock_duration"] = 30
+        if "file_channel" not in s:
+            mongo.db.settings.update_one({"type": "config"}, {"$set": {"file_channel": ""}})
+            s["file_channel"] = ""
         return s
     except Exception as e:
-        return {"site_name": "PremiumMovie", "notice": "Error!", "monetag_id": "10351894", "ad_limit": 2, "lock_duration": 30}
+        return {"site_name": "PremiumMovie", "notice": "Error!", "monetag_id": "10351894", "ad_limit": 2, "lock_duration": 30, "file_channel": ""}
 
 # --- মাস্টার টেমপ্লেট মেকার ---
 def render_full_page(body_html, **kwargs):
@@ -466,9 +469,10 @@ def admin():
             mongo.db.settings.update_one({"type": "config"}, {"$set": {
                 "monetag_id": request.form.get('monetag_id'),
                 "ad_limit": int(request.form.get('ad_limit')),
-                "lock_duration": int(request.form.get('lock_duration'))
+                "lock_duration": int(request.form.get('lock_duration')),
+                "file_channel": request.form.get('file_channel')
             }}, upsert=True)
-            flash("বিজ্ঞাপন ও টাইমার সেটিংস আপডেট হয়েছে!")
+            flash("বিজ্ঞাপন ও স্টোরেজ সেটিংস আপডেট হয়েছে!")
         return redirect('/admin')
 
     content = """
@@ -489,6 +493,7 @@ def admin():
             মনিটেগ জোন আইডি (Zone ID): <input name="monetag_id" value="{{ settings.monetag_id }}">
             এপিসোড প্রতি বিজ্ঞাপনের সংখ্যা: <input type="number" name="ad_limit" value="{{ settings.ad_limit }}">
             লিঙ্ক কত মিনিট আনলক থাকবে: <input type="number" name="lock_duration" value="{{ settings.lock_duration }}">
+            ফাইল স্টোরেজ চ্যানেল আইডি: <input name="file_channel" value="{{ settings.file_channel }}" placeholder="-100xxxxxxx">
             <button class="btn" style="background:green;" type="submit">সেভ অ্যাড সেটিংস</button>
         </form>
     </div>
@@ -576,25 +581,20 @@ def logout():
 
 @bot.message_handler(commands=['start'])
 def handle_bot_start(m):
-    # m.text এর মধ্যে '/start file_id' অংশটি থাকে
     command_parts = m.text.split()
-    
     if len(command_parts) > 1:
-        # ইউজার লিঙ্ক থেকে এসেছে এবং সাথে ফাইল আইডি আছে
-        file_id = command_parts[1]
+        # 'file_' প্রিফিক্স বাদ দিয়ে আসল আইডি বের করা
+        file_id = command_parts[1].replace('file_', '')
         bot.send_chat_action(m.chat.id, 'upload_document')
         
         try:
-            # প্রথমে ভিডিও হিসেবে পাঠানোর চেষ্টা করবে
             bot.send_video(m.chat.id, file_id, caption="🎬 আপনার কাঙ্ক্ষিত ভিডিওটি এখানে।\n\nড্রামা স্টোর কিং এর সাথে থাকার জন্য ধন্যবাদ।")
         except Exception:
             try:
-                # ভিডিও না হলে ডকুমেন্ট হিসেবে পাঠানোর চেষ্টা করবে
                 bot.send_document(m.chat.id, file_id, caption="🎬 আপনার কাঙ্ক্ষিত ফাইলটি এখানে।\n\nড্রামা স্টোর কিং এর সাথে থাকার জন্য ধন্যবাদ।")
             except Exception:
                 bot.reply_to(m, "❌ দুঃখিত, ফাইলটি বটের সার্ভারে খুঁজে পাওয়া যায়নি।")
     else:
-        # সাধারণ স্টার্ট কমান্ড
         bot.reply_to(m, "👋 স্বাগতম! মুভি বা ড্রামা এড করতে /movie কমান্ড ব্যবহার করুন।")
 
 @bot.message_handler(commands=['movie'])
@@ -620,6 +620,9 @@ def handle_bot_inputs(m):
     if cid not in user_states: return
 
     state = user_states[cid]
+    settings = get_site_settings()
+    channel_id = settings.get('file_channel')
+
     if state["status"] == "AWAITING_POSTER":
         if m.content_type == 'photo':
             file_id = m.photo[-1].file_id
@@ -642,11 +645,26 @@ def handle_bot_inputs(m):
             del final_data["status"]
             mongo.db.movies.insert_one(final_data)
             del user_states[cid]
-            bot.reply_to(m, "🚀 ড্রামাটি পাবলিশ হয়েছে!")
+            bot.reply_to(m, "🚀 ড্রামাটি সফলভাবে চ্যানেলে স্টোর ও ওয়েবসাইটে পাবলিশ হয়েছে!")
+        
         elif m.content_type in ['video', 'document']:
-            fid = m.video.file_id if m.content_type == 'video' else m.document.file_id
-            user_states[cid]['episodes'].append(fid)
-            bot.reply_to(m, f"✅ এপিসোড {len(user_states[cid]['episodes'])} যুক্ত হয়েছে।")
+            if not channel_id:
+                bot.reply_to(m, "❌ এডমিন প্যানেলে স্টোরেজ চ্যানেল আইডি সেট করা নেই!")
+                return
+            
+            try:
+                # ফাইলটি প্রাইভেট চ্যানেলে পাঠানো এবং সেখান থেকে ফাইল আইডি নেওয়া
+                if m.content_type == 'video':
+                    sent_msg = bot.send_video(channel_id, m.video.file_id)
+                    stored_fid = sent_msg.video.file_id
+                else:
+                    sent_msg = bot.send_document(channel_id, m.document.file_id)
+                    stored_fid = sent_msg.document.file_id
+                
+                user_states[cid]['episodes'].append(stored_fid)
+                bot.reply_to(m, f"✅ এপিসোড {len(user_states[cid]['episodes'])} প্রাইভেট চ্যানেলে স্টোর হয়েছে। আরও থাকলে পাঠান নতুবা /Done দিন।")
+            except Exception as e:
+                bot.reply_to(m, f"❌ চ্যানেল স্টোরেজ এরর: {str(e)}\nনিশ্চিত করুন বট ওই চ্যানেলে এডমিন আছে।")
 
 @app.route('/' + TOKEN, methods=['POST'])
 def webhook_receiver():
