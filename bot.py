@@ -1155,7 +1155,7 @@ def handle_bot_start(m):
                 ep_index = movie['episodes'].index(msg_id) + 1
             
             movie_name = movie['title'] if movie else "Unknown Movie"
-            caption = f"🎬 {movie_name}\\n🎞 Episode: {ep_index:02d}\\n\\nধন্যবাদ ড্রামা স্টোর কিং এর সাথে থাকার জন্য।"
+            caption = f"🎬 {movie_name} Episode: {ep_index:02d}ধন্যবাদ ড্রামা স্টোর কিং এর সাথে থাকার জন্য।"
             
             protect = True if settings.get('protect_content') == "Yes" else False
             
