@@ -346,5 +346,10 @@ def set_webhook():
     s = bot.set_webhook(url=BASE_URL + '/' + TOKEN)
     return "Success" if s else "Failed"
 
+# একদম নিচের এই অংশটুকু পরিবর্তন করুন
 if __name__ == '__main__':
     app.run(debug=True)
+
+# ভার্সেলের জন্য এটি এক্সপোর্ট করুন 
+handler = app
+app = app
