@@ -441,7 +441,7 @@ def movie_detail(m_id):
                 localStorage.setItem('ad_data_' + uniqueId, JSON.stringify(data));
                 updateStatus(uniqueId);
                 showLoader();
-                window.location.href = "https://t.me/" + "{BOT_USERNAME}" + "?start=" + fileId;
+                window.location.href = "https://t.me/" + "{BOT_USERNAME}" + "?start=file_" + fileId;
             }}
         }}
     </script>
