@@ -10,16 +10,16 @@ from bson.objectid import ObjectId
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 
-# --- কনফিগারেশন ---
+# --- Configuration ---
 TOKEN = "8655043839:AAE_qIxO1QAORFsSJzpIMybe5a-wWVeDfL4" 
 BOT_USERNAME = "dramastorkingsbot" 
 MONGO_URI = "mongodb+srv://drama:drama@cluster0.sa4kvgu.mongodb.net/DramaStoreDB?retryWrites=true&w=majority&appName=Cluster0"
 BASE_URL = "https://indirect-meris-yeasinvai-95120fc6.koyeb.app" 
 
-# --- নতুন যুক্ত করা সিকিউরিটি এবং এপিআই ইনফো ---
+# --- New added Security and API Info ---
 API_ID = "29904834" 
 API_HASH = "8b4fd9ef578af114502feeafa2d31938" 
-OWNER_ID = 7120801813 # এখানে আপনার টেলিগ্রাম আইডি (শুধু আপনিই মুভি এড করতে পারবেন)
+OWNER_ID = 7120801813 # Your telegram ID here (Only you can add movies)
 
 app = Flask(__name__)
 app.secret_key = "ULTRA_FINAL_FULL_MEGA_CODE_VERSION_PRO"
@@ -29,10 +29,10 @@ app.permanent_session_lifetime = datetime.timedelta(days=30)
 mongo = PyMongo(app)
 bot = telebot.TeleBot(TOKEN, threaded=False)
 
-# ইউজার স্টেট ট্র্যাকিং
+# User state tracking
 user_states = {}
 
-# --- ডিলিট ফাংশন ---
+# --- Delete function ---
 def delete_msg(chat_id, message_id, delay):
     time.sleep(delay * 60)
     try:
@@ -40,7 +40,7 @@ def delete_msg(chat_id, message_id, delay):
     except:
         pass
 
-# --- বিস্তারিত প্রিমিয়াম সিএসএস (Design Section Updated) ---
+# --- Detailed Premium CSS (Design Section Updated) ---
 FULL_CSS = """
 <style>
     :root { 
@@ -171,7 +171,7 @@ FULL_CSS = """
         display: flex; justify-content: space-between; align-items: center;
     }
 
-    /* --- স্লাইডার সেকশন আপডেট --- */
+    /* --- Slider Section Update --- */
     .slider { 
         display: flex; 
         overflow-x: auto; 
@@ -209,7 +209,7 @@ FULL_CSS = """
         background: #111;
     }
 
-    /* --- রিসেন্ট আপলোড ল্যান্ডস্কেপ সেকশন --- */
+    /* --- Recent Upload Landscape Section --- */
     .movie-grid { 
         display: grid; 
         grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); 
@@ -226,7 +226,6 @@ FULL_CSS = """
     }
     .movie-card:hover { transform: translateY(-5px); border-color: var(--primary); }
     
-    /* থাম্বনেইল ল্যান্ডস্কেপ করা হলো */
     .movie-card .img-container { width: 100%; aspect-ratio: 16/9; overflow: hidden; position: relative; }
     .movie-card img { width: 100%; height: 100%; object-fit: cover; }
     
@@ -234,7 +233,6 @@ FULL_CSS = """
     .badge-bottom-right { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.8); padding: 4px 10px; font-size: 11px; border-radius: 5px; display: flex; align-items: center; gap: 5px; }
     
     .movie-info-box { padding: 12px; text-align: left; background: #121212; }
-    /* মুভির নাম সম্পুর্ন দেখানোর জন্য আপডেট */
     .movie-info-box h4 { font-size: 15px; font-weight: 600; color: #fff; line-height: 1.4; white-space: normal; overflow: visible; }
 
     .pagination { display: flex; justify-content: center; align-items: center; gap: 15px; margin: 50px 0; }
@@ -349,7 +347,7 @@ FULL_CSS = """
         document.getElementById('loader').style.display = 'none';
     });
 
-    // --- অটো স্লাইডার লজিক ---
+    // --- Auto slider logic ---
     document.addEventListener("DOMContentLoaded", function() {
         const slider = document.querySelector('.slider');
         if (slider) {
@@ -360,7 +358,7 @@ FULL_CSS = """
                 } else {
                     slider.scrollLeft += step;
                 }
-            }, 3000); // প্রতি ৩ সেকেন্ডে অটো স্লাইড হবে
+            }, 3000); 
         }
     });
 
@@ -372,7 +370,7 @@ FULL_CSS = """
             if(!el) return;
 
             if (diff <= 0) {
-                el.innerHTML = "মেয়াদ শেষ";
+                el.innerHTML = "Expired";
                 return;
             }
 
@@ -385,11 +383,11 @@ FULL_CSS = """
             const seconds = Math.floor((diff % (1000 * 60)) / 1000);
 
             let timeStr = "";
-            if (years > 0) timeStr += years + " বছর ";
-            if (months > 0) timeStr += months + " মাস ";
-            if (weeks > 0) timeStr += weeks + " সপ্তাহ ";
-            if (days > 0) timeStr += days + " দিন ";
-            timeStr += hours + " ঘণ্টা " + minutes + " মি. " + seconds + " সে.";
+            if (years > 0) timeStr += years + " Years ";
+            if (months > 0) timeStr += months + " Months ";
+            if (weeks > 0) timeStr += weeks + " Weeks ";
+            if (days > 0) timeStr += days + " Days ";
+            timeStr += hours + " Hours " + minutes + " Mins " + seconds + " Secs";
 
             el.innerHTML = timeStr;
         }
@@ -399,13 +397,13 @@ FULL_CSS = """
 </script>
 """
 
-# --- ডাটাবেজ এবং সেটিংস হেল্পার ---
+# --- Database and settings helpers ---
 def get_site_settings():
     try:
         s = mongo.db.settings.find_one({"type": "config"})
         if not s:
             default = {
-                "site_name": "PremiumMovie", "notice": "স্বাগতম!", 
+                "site_name": "PremiumMovie", "notice": "Welcome!", 
                 "monetag_id": "10351894", "ad_limit": 2, 
                 "lock_duration": 30, "file_channel": "",
                 "auto_delete_time": 5, "protect_content": "No",
@@ -417,7 +415,7 @@ def get_site_settings():
     except Exception as e:
         return {"site_name": "PremiumMovie", "notice": "Error!", "monetag_id": "10351894", "ad_limit": 2, "lock_duration": 30, "file_channel": "", "auto_delete_time": 5, "protect_content": "No", "notification_channel": ""}
 
-# --- মাস্টার টেমপ্লেট মেকার ---
+# --- Master template maker ---
 def render_full_page(body_html, **kwargs):
     settings = get_site_settings()
     kwargs.pop('settings', None)
@@ -435,7 +433,7 @@ def render_full_page(body_html, **kwargs):
     
     template_start = """
     <!DOCTYPE html>
-    <html lang="bn">
+    <html lang="en">
     <head>
         <meta charset="UTF-8">
         <title>{{ settings.site_name }}</title>
@@ -446,31 +444,31 @@ def render_full_page(body_html, **kwargs):
         """ + FULL_CSS + """
     </head>
     <body>
-        <div id="loader"><div class="spinner"></div><p style="margin-top:20px; color:var(--primary); font-weight:bold;">লোডিং হচ্ছে...</p></div>
+        <div id="loader"><div class="spinner"></div><p style="margin-top:20px; color:var(--primary); font-weight:bold;">Loading...</p></div>
         
         <div class="notice-bar">{{ settings.notice }}</div>
         
         <div class="navbar">
-            <a href="/" class="{% if request.path == '/' %}active{% endif %}"><i class="fas fa-home"></i> হোম</a>
-            <a href="/profile" class="{% if request.path == '/profile' %}active{% endif %}"><i class="fas fa-user"></i> প্রোফাইল</a>
+            <a href="/" class="{% if request.path == '/' %}active{% endif %}"><i class="fas fa-home"></i> Home</a>
+            <a href="/profile" class="{% if request.path == '/profile' %}active{% endif %}"><i class="fas fa-user"></i> Profile</a>
             {% if session.get('role') == 'admin' %}
-            <a href="/admin" class="{% if request.path == '/admin' %}active{% endif %}"><i class="fas fa-user-shield"></i> এডমিন</a>
+            <a href="/admin" class="{% if request.path == '/admin' %}active{% endif %}"><i class="fas fa-user-shield"></i> Admin</a>
             {% endif %}
         </div>
 
         {% if user_data %}
         <div class="user-stats-bar">
             <div style="display:flex; justify-content:space-between; width:100%;">
-                <span><i class="fas fa-wallet" style="color:gold;"></i> ব্যালেন্স: <b>{{ user_data.get('coins', 0) }}</b> কয়েন</span>
+                <span><i class="fas fa-wallet" style="color:gold;"></i> Balance: <b>{{ user_data.get('coins', 0) }}</b> Coins</span>
                 {% if user_data.get('premium_until') and user_data.get('premium_until') > now %}
-                <span style="color:gold; font-weight:bold;"><i class="fas fa-crown"></i> প্রিমিয়াম</span>
+                <span style="color:gold; font-weight:bold;"><i class="fas fa-crown"></i> Premium</span>
                 {% else %}
-                <span style="color:var(--gray);">ফ্রি ইউজার</span>
+                <span style="color:var(--gray);">Free User</span>
                 {% endif %}
             </div>
             {% if user_data.get('premium_until') and user_data.get('premium_until') > now %}
             <div style="font-size:11px; color:#00ff00; width:100%; text-align:center;">
-                বাকি সময়: <span id="nav-premium-timer"></span>
+                Remaining: <span id="nav-premium-timer"></span>
                 <script>startPremiumTimer({{ expiry_ts }}, 'nav-premium-timer');</script>
             </div>
             {% endif %}
@@ -479,7 +477,7 @@ def render_full_page(body_html, **kwargs):
 
         <div class="search-container">
             <form action="/search" method="GET" class="search-form">
-                <input type="text" name="q" placeholder="মুভি বা ড্রামা সার্চ করুন..." value="{{ request.args.get('q', '') }}" required>
+                <input type="text" name="q" placeholder="Search movies or dramas..." value="{{ request.args.get('q', '') }}" required>
                 <button type="submit" class="btn"><i class="fas fa-search"></i></button>
             </form>
         </div>
@@ -503,7 +501,7 @@ def render_full_page(body_html, **kwargs):
     full_template = template_start + body_html + template_end
     return render_template_string(full_template, settings=settings, session=session, user_data=user_data, expiry_ts=expiry_ts, now=datetime.datetime.now(), **kwargs)
 
-# --- সাইট লজিক রাউটস ---
+# --- Site logic routes ---
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -521,15 +519,15 @@ def index():
     <div class="feature-menus">
         <a href="/buy-premium" class="menu-btn btn-premium">
             <i class="fas fa-crown fa-lg"></i>
-            <span>প্রিমিয়াম বায়</span>
+            <span>Buy Premium</span>
         </a>
         <a href="/tasks" class="menu-btn btn-task">
             <i class="fas fa-tasks fa-lg"></i>
-            <span>কয়েন ইনকাম</span>
+            <span>Earn Coins</span>
         </a>
     </div>
 
-    <div class="section-title">টপ ট্রেন্ডিং (ভিওড) <i class="fas fa-fire" style="color:orange;"></i></div>
+    <div class="section-title">Top Trending (Views) <i class="fas fa-fire" style="color:orange;"></i></div>
     <div class="slider">
         {% for s in sliders %}
         <div class="slider-item" onclick="showLoader(); location.href='/movie/{{s._id}}'">
@@ -542,7 +540,7 @@ def index():
         {% endfor %}
     </div>
 
-    <div class="section-title">সদ্য আপলোড করা <i class="fas fa-clock"></i></div>
+    <div class="section-title">Recently Uploaded <i class="fas fa-clock"></i></div>
     <div class="movie-grid">
         {% for m in movies %}
         <div class="movie-card" onclick="showLoader(); location.href='/movie/{{m._id}}'">
@@ -562,13 +560,13 @@ def index():
         {% if page > 1 %}
             <a href="/?page={{page-1}}" onclick="showLoader()"><i class="fas fa-chevron-left"></i> Previous</a>
         {% endif %}
-        <span class="page-info">পৃষ্ঠা নম্বর: {{page}}</span>
+        <span class="page-info">Page Number: {{page}}</span>
         <a href="/?page={{page+1}}" onclick="showLoader()">Next Page <i class="fas fa-chevron-right"></i></a>
     </div>
     """
     return render_full_page(content, sliders=sliders, movies=movies, page=page)
 
-# --- টাস্ক এবং প্রিমিয়াম লজিক ---
+# --- Task and premium logic ---
 
 @app.route('/tasks')
 def tasks():
@@ -585,26 +583,26 @@ def tasks():
         mongo.db.users.update_one({"_id": user['_id']}, {"$set": {"daily_stats": daily_stats}})
 
     content = """
-    <div class="section-title">কয়েন ইনকাম করুন <i class="fas fa-coins" style="color:gold;"></i></div>
+    <div class="section-title">Earn Coins <i class="fas fa-coins" style="color:gold;"></i></div>
     {% for t in tasks_list %}
     <div class="task-card">
         <div class="task-info">
             <h4>{{ t.title }}</h4>
-            <p>+{{ t.reward }} কয়েন | লিমিট: {{ daily_stats.counts.get(t._id|string, 0) }}/{{ t.get('daily_limit', 1) }}</p>
+            <p>+{{ t.reward }} Coins | Limit: {{ daily_stats.counts.get(t._id|string, 0) }}/{{ t.get('daily_limit', 1) }}</p>
         </div>
         {% if daily_stats.counts.get(t._id|string, 0)|int >= t.get('daily_limit', 1)|int %}
-            <span style="color:var(--gray); font-weight:bold;">লিমিট শেষ</span>
+            <span style="color:var(--gray); font-weight:bold;">Limit Reached</span>
         {% else %}
-            <button onclick="handleTask('{{ t._id }}', '{{ t.type }}', {{ t.get('timer', 5) }})" class="task-btn">শুরু করুন</button>
+            <button onclick="handleTask('{{ t._id }}', '{{ t.type }}', {{ t.get('timer', 5) }})" class="task-btn">Start</button>
         {% endif %}
     </div>
     {% endfor %}
 
     <div id="task-timer-modal">
-        <h2 style="color:var(--primary);">অপেক্ষা করুন...</h2>
+        <h2 style="color:var(--primary);">Wait...</h2>
         <div id="timer-countdown" style="font-size:50px; font-weight:bold; margin:20px 0;">0</div>
-        <p id="timer-subtext">টাস্কটি শেষ হতে কয়েন যোগ হবে।</p>
-        <button id="claim-reward-btn" class="btn" style="display:none; max-width:200px;" onclick="claimReward()">কয়েন ক্লেইম করুন</button>
+        <p id="timer-subtext">Coins will be added when the task finishes.</p>
+        <button id="claim-reward-btn" class="btn" style="display:none; max-width:200px;" onclick="claimReward()">Claim Coins</button>
     </div>
 
     <script>
@@ -649,7 +647,7 @@ def tasks():
                 document.getElementById('timer-countdown').innerText = timeLeft;
                 if(timeLeft <= 0) {
                     clearInterval(timer);
-                    document.getElementById('timer-countdown').innerText = "সম্পন্ন!";
+                    document.getElementById('timer-countdown').innerText = "Done!";
                     document.getElementById('claim-reward-btn').style.display = 'block';
                 }
             }, 1000);
@@ -661,10 +659,10 @@ def tasks():
             .then(res => res.json())
             .then(data => {
                 if(data.success) {
-                    alert('অভিনন্দন! ' + data.reward + ' কয়েন যোগ হয়েছে।');
+                    alert('Congratulations! ' + data.reward + ' coins added.');
                     location.reload();
                 } else {
-                    alert(data.error || 'কিছু ভুল হয়েছে!');
+                    alert(data.error || 'Something went wrong!');
                     location.reload();
                 }
             });
@@ -683,7 +681,7 @@ def claim_task_new(tid):
     if 'user_id' not in session: return jsonify({"success": False})
     
     t = mongo.db.tasks.find_one({"_id": ObjectId(tid)})
-    if not t: return jsonify({"success": False, "error": "টাস্ক পাওয়া যায়নি!"})
+    if not t: return jsonify({"success": False, "error": "Task not found!"})
     
     uid = ObjectId(session['user_id'])
     user = mongo.db.users.find_one({"_id": uid})
@@ -693,7 +691,7 @@ def claim_task_new(tid):
     
     current_count = daily_stats.get('counts', {}).get(str(tid), 0)
     if int(current_count) >= int(t.get('daily_limit', 1)):
-        return jsonify({"success": False, "error": "আজকের লিমিট শেষ!"})
+        return jsonify({"success": False, "error": "Today's limit reached!"})
     
     mongo.db.users.update_one({"_id": uid}, {
         "$inc": {"coins": int(t.get('reward', 10)), f"daily_stats.counts.{tid}": 1},
@@ -707,15 +705,15 @@ def buy_premium():
     if 'user_id' not in session: return redirect('/login')
     offers = list(mongo.db.offers.find())
     content = """
-    <div class="section-title">প্রিমিয়াম প্যাকেজ <i class="fas fa-crown" style="color:gold;"></i></div>
-    <p style="margin-bottom:20px; color:var(--gray);">প্রিমিয়াম কিনলে কোনো বিজ্ঞাপন ছাড়াই মুভি দেখতে পারবেন।</p>
+    <div class="section-title">Premium Packages <i class="fas fa-crown" style="color:gold;"></i></div>
+    <p style="margin-bottom:20px; color:var(--gray);">Buy premium to watch movies without any ads.</p>
     {% for o in offers %}
     <div class="task-card">
         <div class="task-info">
-            <h4>{{ o.days }} দিনের প্রিমিয়াম</h4>
-            <p>{{ o.price }} কয়েন</p>
+            <h4>{{ o.days }} Days Premium</h4>
+            <p>{{ o.price }} Coins</p>
         </div>
-        <a href="/purchase-premium/{{ o._id }}" class="task-btn" style="background:gold; color:black;" onclick="return confirm('আপনি কি নিশ্চিত?')">কিনুন</a>
+        <a href="/purchase-premium/{{ o._id }}" class="task-btn" style="background:gold; color:black;" onclick="return confirm('Are you sure?')">Buy</a>
     </div>
     {% endfor %}
     """
@@ -741,9 +739,9 @@ def purchase_premium(oid):
             "$inc": {"coins": -offer['price']},
             "$set": {"premium_until": new_expiry}
         })
-        flash(f"সফলভাবে {days} দিনের প্রিমিয়াম কেনা হয়েছে!")
+        flash(f"Successfully purchased {days} days premium!")
     else:
-        flash("আপনার পর্যাপ্ত কয়েন নেই!")
+        flash("You don't have enough coins!")
     return redirect('/profile')
 
 @app.route('/search')
@@ -753,7 +751,7 @@ def search():
     results = list(mongo.db.movies.find({"title": {"$regex": query, "$options": "i"}}).sort("_id", -1))
     
     content = """
-    <div class="section-title">সার্চ রেজাল্ট: "{{ query }}"</div>
+    <div class="section-title">Search Results: "{{ query }}"</div>
     <div class="movie-grid">
         {% for m in results %}
         <div class="movie-card" onclick="showLoader(); location.href='/movie/{{m._id}}'">
@@ -767,7 +765,7 @@ def search():
             </div>
         </div>
         {% else %}
-        <p style="text-align:center; grid-column: 1/-1; padding: 50px; color: var(--gray);">দুঃখিত, আপনার সার্চ করা মুভিটি পাওয়া যায়নি।</p>
+        <p style="text-align:center; grid-column: 1/-1; padding: 50px; color: var(--gray);">Sorry, the movie you searched for was not found.</p>
         {% endfor %}
     </div>
     """
@@ -789,7 +787,7 @@ def movie_detail(m_id):
 
     content = """
     <div class="back-btn-container">
-        <a href="/" onclick="showLoader();" class="back-btn"><i class="fas fa-arrow-left"></i> ব্যাক টু হোম</a>
+        <a href="/" onclick="showLoader();" class="back-btn"><i class="fas fa-arrow-left"></i> Back to Home</a>
     </div>
     
     <div style="text-align:center;">
@@ -801,13 +799,13 @@ def movie_detail(m_id):
         </div>
         
         <div class="card" style="max-width:100%; text-align:left; border-top:4px solid var(--primary);">
-            <h4 style="margin-bottom:20px; border-bottom:1px solid #333; padding-bottom:10px;">ডাউনলোড এবং ওয়াচ লিঙ্ক:</h4>
+            <h4 style="margin-bottom:20px; border-bottom:1px solid #333; padding-bottom:10px;">Download and Watch Links:</h4>
             <div class="episode-list">
                 {% for msg_id in movie.episodes %}
                 <div class="ep-button" onclick="processAd('{{ msg_id }}_idx_{{ loop.index0 }}', '{{ msg_id }}')">
                     <div>
                         🎬 Episode {{ "%02d" % (loop.index0 + 1) }}
-                        <span class="ep-status" id="status_{{ msg_id }}_idx_{{ loop.index0 }}">লোড হচ্ছে...</span>
+                        <span class="ep-status" id="status_{{ msg_id }}_idx_{{ loop.index0 }}">Loading...</span>
                     </div>
                     <i class="fas fa-download"></i>
                 </div>
@@ -827,7 +825,7 @@ def movie_detail(m_id):
 
         function updateStatus(uniqueId) {
             if(IS_PREMIUM) {
-                document.getElementById('status_' + uniqueId).innerHTML = "🔓 প্রিমিয়াম আনলকড (No Ads)";
+                document.getElementById('status_' + uniqueId).innerHTML = "🔓 Premium Unlocked (No Ads)";
                 document.getElementById('status_' + uniqueId).style.color = "gold";
                 return;
             }
@@ -846,10 +844,10 @@ def movie_detail(m_id):
 
             if (data.unlocked_at > 0) {
                 let remain = Math.ceil(LOCK_MINUTES - (now - data.unlocked_at) / (1000 * 60));
-                statusEl.innerHTML = "🔓 আনলকড (বাকি " + remain + " মিনিট)";
+                statusEl.innerHTML = "🔓 Unlocked (" + remain + " mins remaining)";
                 statusEl.style.color = "#00ff00";
             } else {
-                statusEl.innerHTML = "🔒 বিজ্ঞাপন দেখা হয়েছে: " + data.count + "/" + AD_LIMIT;
+                statusEl.innerHTML = "🔒 Ads viewed: " + data.count + "/" + AD_LIMIT;
                 statusEl.style.color = "#b3b3b3";
             }
         }
@@ -896,7 +894,7 @@ def movie_detail(m_id):
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
     if session.get('role') != 'admin': 
-        flash("আপনার এডমিন অ্যাক্সেস নেই!")
+        flash("You do not have admin access!")
         return redirect('/')
     
     settings = get_site_settings()
@@ -913,7 +911,7 @@ def admin():
                 "site_name": request.form.get('site_name'),
                 "notice": request.form.get('notice')
             }}, upsert=True)
-            flash("সাইট সেটিংস আপডেট হয়েছে!")
+            flash("Site settings updated!")
         elif action == 'update_admin':
             new_num = request.form.get('admin_number')
             new_pw = request.form.get('admin_password')
@@ -921,7 +919,7 @@ def admin():
             if new_pw:
                 up_data["password"] = generate_password_hash(new_pw)
             mongo.db.users.update_one({"_id": admin_user['_id']}, {"$set": up_data})
-            flash("এডমিন আইডি এবং পাসওয়ার্ড সফলভাবে আপডেট হয়েছে!")
+            flash("Admin ID and Password updated successfully!")
         elif action == 'add_task':
             mongo.db.tasks.insert_one({
                 "title": request.form.get('title'),
@@ -931,13 +929,13 @@ def admin():
                 "timer": int(request.form.get('timer', 10)),
                 "daily_limit": int(request.form.get('daily_limit', 1))
             })
-            flash("টাস্ক এড হয়েছে!")
+            flash("Task added!")
         elif action == 'add_offer':
             mongo.db.offers.insert_one({
                 "days": request.form.get('days'),
                 "price": int(request.form.get('price'))
             })
-            flash("অফার এড হয়েছে!")
+            flash("Offer added!")
         elif action == 'del_task':
             mongo.db.tasks.delete_one({"_id": ObjectId(request.form.get('tid'))})
         elif action == 'del_offer':
@@ -952,46 +950,46 @@ def admin():
                 "protect_content": request.form.get('protect_content'),
                 "notification_channel": request.form.get('notification_channel') 
             }}, upsert=True)
-            flash("বিজ্ঞাপন ও স্টোরেজ সেটিংস আপডেট হয়েছে!")
+            flash("Ad and storage settings updated!")
         elif action == 'delete_movie':
             mid = request.form.get('movie_id')
             mongo.db.movies.delete_one({"_id": ObjectId(mid)})
-            flash("মুভিটি ডিলিট করা হয়েছে!")
+            flash("Movie has been deleted!")
             
         return redirect('/admin')
 
     content = """
     <div style="text-align:right; margin-bottom:20px;">
-        <a href="/logout" class="btn" style="background:#333; display:inline-block; width:auto; padding:10px 20px;">লগআউট (Admin Logout)</a>
+        <a href="/logout" class="btn" style="background:#333; display:inline-block; width:auto; padding:10px 20px;">Logout (Admin)</a>
     </div>
 
     <div class="card" style="border-top:4px solid #00c6ff;">
-        <h3><i class="fas fa-user-lock"></i> এডমিন ক্রেডেনশিয়াল</h3>
-        <p style="color:var(--gray); font-size:12px; margin-bottom:10px;">লগিন করার মোবাইল নম্বর এবং পাসওয়ার্ড পরিবর্তন করুন।</p>
+        <h3><i class="fas fa-user-lock"></i> Admin Credentials</h3>
+        <p style="color:var(--gray); font-size:12px; margin-bottom:10px;">Change login mobile number and password.</p>
         <form method="POST">
             <input type="hidden" name="action" value="update_admin">
-            মোবাইল নম্বর: <input name="admin_number" value="{{ admin_user.number }}" required>
-            নতুন পাসওয়ার্ড (ফাঁকা রাখলে আগেরটাই থাকবে): <input type="password" name="admin_password" placeholder="নতুন পাসওয়ার্ড">
-            <button class="btn" type="submit" style="background:#00c6ff;">আপডেট ক্রেডেনশিয়াল</button>
+            Mobile Number: <input name="admin_number" value="{{ admin_user.number }}" required>
+            New Password (Leave blank for no change): <input type="password" name="admin_password" placeholder="New Password">
+            <button class="btn" type="submit" style="background:#00c6ff;">Update Credentials</button>
         </form>
     </div>
 
     <div class="card">
-        <h3><i class="fas fa-plus"></i> নতুন টাস্ক এড করুন</h3>
+        <h3><i class="fas fa-plus"></i> Add New Task</h3>
         <form method="POST">
             <input type="hidden" name="action" value="add_task">
-            <input name="title" placeholder="টাস্ক টাইটেল" required>
+            <input name="title" placeholder="Task Title" required>
             <select name="type">
-                <option value="monetag">মনিটেগ স্ক্রিপ্ট</option>
-                <option value="link">ডিরেক্ট লিঙ্ক</option>
+                <option value="monetag">Monetag Script</option>
+                <option value="link">Direct Link</option>
             </select>
-            <textarea name="content" placeholder="স্ক্রিপ্ট অথবা লিঙ্ক এখানে দিন" style="width:100%; height:80px; background:#1a1a1a; color:white; padding:10px; border-radius:10px; border:1px solid #333;"></textarea>
+            <textarea name="content" placeholder="Enter script or link here" style="width:100%; height:80px; background:#1a1a1a; color:white; padding:10px; border-radius:10px; border:1px solid #333;"></textarea>
             <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
                 <input type="number" name="reward" placeholder="Reward (Coin)" value="10">
                 <input type="number" name="timer" placeholder="Wait Time (Sec)" value="10">
                 <input type="number" name="daily_limit" placeholder="Daily Limit" value="1">
             </div>
-            <button class="btn" type="submit">টাস্ক সেভ করুন</button>
+            <button class="btn" type="submit">Save Task</button>
         </form>
         <div style="margin-top:20px;">
             {% for t in current_tasks %}
@@ -1008,17 +1006,17 @@ def admin():
     </div>
 
     <div class="card">
-        <h3><i class="fas fa-crown"></i> প্রিমিয়াম অফার এড</h3>
+        <h3><i class="fas fa-crown"></i> Add Premium Offer</h3>
         <form method="POST">
             <input type="hidden" name="action" value="add_offer">
-            <input name="days" placeholder="কত দিন (উদা: 30)" required>
-            <input name="price" placeholder="কত কয়েন (উদা: 100)" required>
-            <button class="btn" type="submit">অফার সেভ করুন</button>
+            <input name="days" placeholder="How many days (e.g. 30)" required>
+            <input name="price" placeholder="How many coins (e.g. 100)" required>
+            <button class="btn" type="submit">Save Offer</button>
         </form>
         <div style="margin-top:20px;">
             {% for o in current_offers %}
             <div class="manage-item">
-                <span>{{ o.days }} দিন - {{ o.price }} কয়েন</span>
+                <span>{{ o.days }} Days - {{ o.price }} Coins</span>
                 <form method="POST" style="margin:0;">
                     <input type="hidden" name="action" value="del_offer">
                     <input type="hidden" name="oid" value="{{ o._id }}">
@@ -1030,39 +1028,39 @@ def admin():
     </div>
 
     <div class="card">
-        <h3><i class="fas fa-cog"></i> জেনারেল সেটিংস</h3>
+        <h3><i class="fas fa-cog"></i> General Settings</h3>
         <form method="POST">
             <input type="hidden" name="action" value="site">
-            সাইটের নাম: <input name="site_name" value="{{ settings.site_name }}">
-            নোটিশ বার টেক্সট: <input name="notice" value="{{ settings.notice }}">
-            <button class="btn" type="submit">সেভ জেনারেল সেটিংস</button>
+            Site Name: <input name="site_name" value="{{ settings.site_name }}">
+            Notice Bar Text: <input name="notice" value="{{ settings.notice }}">
+            <button class="btn" type="submit">Save General Settings</button>
         </form>
     </div>
 
     <div class="card" style="border-top:4px solid green;">
-        <h3><i class="fas fa-ad"></i> মনিটেগ ও লক সেটিংস</h3>
+        <h3><i class="fas fa-ad"></i> Monetag and Lock Settings</h3>
         <form method="POST">
             <input type="hidden" name="action" value="ad">
-            মনিটেগ জোন আইডি: <input name="monetag_id" value="{{ settings.monetag_id }}">
-            এপিসোড প্রতি বিজ্ঞাপন: <input type="number" name="ad_limit" value="{{ settings.ad_limit }}">
-            লক ডিউরেশন (মিনিট): <input type="number" name="lock_duration" value="{{ settings.lock_duration }}">
-            ফাইল চ্যানেল আইডি: <input name="file_channel" value="{{ settings.file_channel }}">
-            নোটিফিকেশন চ্যানেল আইডি: <input name="notification_channel" value="{{ settings.notification_channel }}">
-            অটো ডিলিট টাইম (মিনিট): <input type="number" name="auto_delete_time" value="{{ settings.auto_delete_time }}">
-            ফরওয়ার্ড বন্ধ করবেন?
+            Monetag Zone ID: <input name="monetag_id" value="{{ settings.monetag_id }}">
+            Ads per episode: <input type="number" name="ad_limit" value="{{ settings.ad_limit }}">
+            Lock duration (minutes): <input type="number" name="lock_duration" value="{{ settings.lock_duration }}">
+            File channel ID: <input name="file_channel" value="{{ settings.file_channel }}">
+            Notification channel ID: <input name="notification_channel" value="{{ settings.notification_channel }}">
+            Auto delete time (minutes): <input type="number" name="auto_delete_time" value="{{ settings.auto_delete_time }}">
+            Turn off forward?
             <select name="protect_content">
                 <option value="Yes" {% if settings.protect_content == 'Yes' %}selected{% endif %}>Yes (Lock Forward)</option>
                 <option value="No" {% if settings.protect_content == 'No' %}selected{% endif %}>No (Allow Forward)</option>
             </select>
-            <button class="btn" style="background:green;" type="submit">সেভ অ্যাড সেটিংস</button>
+            <button class="btn" style="background:green;" type="submit">Save Ad Settings</button>
         </form>
     </div>
 
     <div class="card" style="max-width:800px; border-top:4px solid var(--primary);">
-        <h3><i class="fas fa-tasks"></i> মুভি ম্যানেজমেন্ট</h3>
+        <h3><i class="fas fa-tasks"></i> Movie Management</h3>
         <form method="GET" style="display:flex; gap:10px; margin-bottom:20px;">
-            <input name="search_movie" placeholder="সার্চ..." value="{{ request.args.get('search_movie', '') }}">
-            <button type="submit" class="btn" style="width:100px;">সার্চ</button>
+            <input name="search_movie" placeholder="Search..." value="{{ request.args.get('search_movie', '') }}">
+            <button type="submit" class="btn" style="width:100px;">Search</button>
         </form>
         <div class="manage-list">
             {% for m in manage_movies %}
@@ -1071,7 +1069,7 @@ def admin():
                 <form method="POST" style="margin:0;">
                     <input type="hidden" name="action" value="delete_movie">
                     <input type="hidden" name="movie_id" value="{{ m._id }}">
-                    <button class="del-btn" type="submit">ডিলিট</button>
+                    <button class="del-btn" type="submit">Delete</button>
                 </form>
             </div>
             {% endfor %}
@@ -1085,7 +1083,7 @@ def register():
     if request.method == 'POST':
         fname, lname, num, pw = request.form.get('fname'), request.form.get('lname'), request.form.get('number'), request.form.get('password')
         if mongo.db.users.find_one({"number": num}):
-            flash("এই নাম্বার দিয়ে অলরেডি অ্যাকাউন্ট আছে!")
+            flash("Account already exists with this number!")
         else:
             role = "admin" if mongo.db.users.count_documents({}) == 0 else "user"
             mongo.db.users.insert_one({
@@ -1095,20 +1093,20 @@ def register():
                 "coins": 0, "completed_tasks": [], "premium_until": None,
                 "daily_stats": {"date": datetime.datetime.now().strftime("%Y-%m-%d"), "counts": {}}
             })
-            flash("রেজিস্ট্রেশন সফল! এখন লগিন করুন।")
+            flash("Registration successful! Now login.")
             return redirect('/login')
     
     html = """
     <div class="card">
-        <h3>রেজিস্ট্রেশন করুন</h3>
+        <h3>Register Now</h3>
         <form method="POST">
-            <input name="fname" placeholder="ফাস্ট নাম" required>
-            <input name="lname" placeholder="লাস্ট নাম" required>
-            <input name="number" placeholder="মোাবাইল নাম্বার" required>
-            <input type="password" name="password" placeholder="পাসওয়ার্ড" required>
-            <button class="btn" type="submit">নিবন্ধন করুন</button>
+            <input name="fname" placeholder="First Name" required>
+            <input name="lname" placeholder="Last Name" required>
+            <input name="number" placeholder="Mobile Number" required>
+            <input type="password" name="password" placeholder="Password" required>
+            <button class="btn" type="submit">Register</button>
         </form>
-        <div style="text-align:center; margin-top:20px;"><a href="/login" style="color:var(--gray); text-decoration:none;">ইতিমধ্যে অ্যাকাউন্ট আছে? লগিন করুন</a></div>
+        <div style="text-align:center; margin-top:20px;"><a href="/login" style="color:var(--gray); text-decoration:none;">Already have an account? Login</a></div>
     </div>
     """
     return render_full_page(html)
@@ -1122,17 +1120,17 @@ def login():
             session.permanent = True
             session['user_id'], session['role'] = str(user['_id']), user.get('role', 'user')
             return redirect('/')
-        flash("নাম্বার অথবা পাসওয়ার্ড ভুল!")
+        flash("Wrong number or password!")
     
     html = """
     <div class="card">
-        <h3>লগিন করুন</h3>
+        <h3>Login</h3>
         <form method="POST">
-            <input name="number" placeholder="মোাবাইল নাম্বার" required>
-            <input type="password" name="password" placeholder="পাসওয়ার্ড" required>
-            <button class="btn" type="submit">প্রবেশ করুন</button>
+            <input name="number" placeholder="Mobile Number" required>
+            <input type="password" name="password" placeholder="Password" required>
+            <button class="btn" type="submit">Login</button>
         </form>
-        <div style="text-align:center; margin-top:20px;"><a href="/register" style="color:var(--gray); text-decoration:none;">অ্যাকাউন্ট নেই? নতুন অ্যাকাউন্ট খুলুন</a></div>
+        <div style="text-align:center; margin-top:20px;"><a href="/register" style="color:var(--gray); text-decoration:none;">No account? Create account</a></div>
     </div>
     """
     return render_full_page(html)
@@ -1154,20 +1152,20 @@ def profile():
         </div>
         <h2 style="margin-bottom:10px;">{{ u.fname }} {{ u.lname }}</h2>
         <p style="color:var(--gray); margin-bottom:10px;"><i class="fas fa-phone"></i> {{ u.number }}</p>
-        <p style="color:var(--gold); font-weight:bold; margin-bottom:10px;"><i class="fas fa-coins"></i> ব্যালেন্স: {{ u.get('coins', 0) }}</p>
+        <p style="color:var(--gold); font-weight:bold; margin-bottom:10px;"><i class="fas fa-coins"></i> Balance: {{ u.get('coins', 0) }}</p>
         
         {% if u.premium_until and u.premium_until > now %}
         <div style="background:#1a1a1a; border:1px solid var(--gold); border-radius:10px; padding:15px; margin-bottom:20px;">
-            <p style="color:var(--gold); font-weight:bold;"><i class="fas fa-crown"></i> প্রিমিয়াম একটিভ</p>
-            <p style="font-size:12px; color:#fff;">মেয়াদ শেষ হতে বাকি:</p>
+            <p style="color:var(--gold); font-weight:bold;"><i class="fas fa-crown"></i> Premium Active</p>
+            <p style="font-size:12px; color:#fff;">Expiry time left:</p>
             <p id="profile-premium-timer" style="font-size:14px; font-weight:bold; color:#00ff00;"></p>
             <script>startPremiumTimer({{ expiry_ts }}, 'profile-premium-timer');</script>
         </div>
         {% else %}
-        <p style="color:var(--primary); font-weight:bold; margin-bottom:20px;">পজিশন: {{ u.role|upper }}</p>
+        <p style="color:var(--primary); font-weight:bold; margin-bottom:20px;">Position: {{ u.role|upper }}</p>
         {% endif %}
         
-        <a href="/logout" class="btn" style="background:#333;">লগআউট (Logout)</a>
+        <a href="/logout" class="btn" style="background:#333;">Logout</a>
     </div>
     """
     return render_full_page(html, u=u)
@@ -1177,7 +1175,7 @@ def logout():
     session.clear()
     return redirect('/login')
 
-# --- টেলিগ্রাম বট হ্যান্ডলার ---
+# --- Telegram bot handler ---
 
 @bot.message_handler(commands=['start'])
 def handle_bot_start(m):
@@ -1189,7 +1187,7 @@ def handle_bot_start(m):
         try:
             msg_id = int(text.split("file_")[1])
             if not channel_id:
-                bot.send_message(m.chat.id, "❌ স্টোরেজ চ্যানেল সেট করা নেই!")
+                bot.send_message(m.chat.id, "❌ Storage channel not set!")
                 return
             
             movie = mongo.db.movies.find_one({"episodes": msg_id})
@@ -1198,37 +1196,37 @@ def handle_bot_start(m):
                 ep_index = movie['episodes'].index(msg_id) + 1
             
             movie_name = movie['title'] if movie else "Unknown Movie"
-            caption = f"🎬 {movie_name}\n🎞 Episode: {ep_index:02d}\n\nধন্যবাদ ড্রামা স্টোর কিং এর সাথে থাকার জন্য।"
+            caption = f"🎬 {movie_name}\n🎞 Episode: {ep_index:02d}\n\nThanks for staying with Drama Store Kings."
             
             protect = True if settings.get('protect_content') == "Yes" else False
             
             sent_msg = bot.copy_message(m.chat.id, channel_id, msg_id, caption=caption, protect_content=protect)
             
-            bot.send_message(m.chat.id, f"✅ ফাইলটি উপরে দেওয়া হয়েছে।\n⚠️ এটি {settings.get('auto_delete_time')} মিনিট পর অটো ডিলিট হয়ে যাবে।")
+            bot.send_message(m.chat.id, f"✅ File provided above.\n⚠️ It will be auto-deleted in {settings.get('auto_delete_time')} minutes.")
             
             threading.Thread(target=delete_msg, args=(m.chat.id, sent_msg.message_id, int(settings.get('auto_delete_time', 5)))).start()
 
         except Exception as e:
-            bot.send_message(m.chat.id, "❌ ফাইলটি পাওয়া যায়নি।")
+            bot.send_message(m.chat.id, "❌ File not found.")
     else:
         markup = telebot.types.InlineKeyboardMarkup()
         markup.add(telebot.types.InlineKeyboardButton("🌐 Visit Website", url=BASE_URL))
         
-        info = f"👤 প্রোফাইল তথ্য:\n📝 নাম: {m.from_user.first_name} {m.from_user.last_name or ''}\n🆔 আইডি: {m.from_user.id}\n🔗 ইউজারনেম: @{m.from_user.username or 'N/A'}\n\nস্বাগতম! মুভি দেখতে ওয়েবসাইট ভিজিট করুন।"
+        info = f"👤 Profile Info:\n📝 Name: {m.from_user.first_name} {m.from_user.last_name or ''}\n🆔 ID: {m.from_user.id}\n🔗 Username: @{m.from_user.username or 'N/A'}\n\nWelcome! Visit the website to watch movies."
         bot.send_message(m.chat.id, info, reply_markup=markup)
 
 @bot.message_handler(commands=['movie'])
 def start_adding_movie(m):
     if int(m.from_user.id) != int(OWNER_ID):
-        bot.send_message(m.chat.id, f"❌ আপনি ওনার নন!")
+        bot.send_message(m.chat.id, f"❌ You are not the owner!")
         return
     try:
         parts = m.text.split('/movie ')[1].split(',')
         if len(parts) < 2: raise Exception()
         user_states[m.chat.id] = {"title": parts[0].strip(), "category": parts[1].strip(), "episodes": [], "views": 0, "status": "AWAITING_POSTER"}
-        bot.send_message(m.chat.id, "📸 মুভির পোস্টার ফটো পাঠান।")
+        bot.send_message(m.chat.id, "📸 Send movie poster photo.")
     except:
-        bot.send_message(m.chat.id, "⚠️ সঠিক নিয়ম: `/movie নাম, ক্যাটাগরি`", parse_mode="Markdown")
+        bot.send_message(m.chat.id, "⚠️ Correct format: `/movie Name, Category`", parse_mode="Markdown")
 
 @bot.message_handler(content_types=['photo', 'text', 'video', 'document'])
 def handle_bot_inputs(m):
@@ -1243,7 +1241,7 @@ def handle_bot_inputs(m):
     if m.text and m.text.strip().lower() == '/done':
         if state["status"] == "AWAITING_EPISODES":
             if not state["episodes"]:
-                bot.send_message(cid, "❌ কোনো এপিসোড নেই।")
+                bot.send_message(cid, "❌ No episodes found.")
                 return
             
             res = mongo.db.movies.insert_one(user_states[cid])
@@ -1255,13 +1253,13 @@ def handle_bot_inputs(m):
                     final_ch = int(notif_ch) if str(notif_ch).startswith('-') else notif_ch
                     markup = telebot.types.InlineKeyboardMarkup()
                     markup.add(telebot.types.InlineKeyboardButton("👁 Watch Movie", url=f"{BASE_URL}/movie/{movie_id}"))
-                    msg = f"🔥 নতুন মুভি আপলোড হয়েছে!\n\n🎬 নাম: {state['title']}\n📁 ক্যাটাগরি: {state['category']}\n🎞 এপিসোড সংখ্যা: {len(state['episodes'])}\n\nনিচের বাটনে ক্লিক করে মুভিটি দেখুন।"
+                    msg = f"🔥 New movie uploaded!\n\n🎬 Name: {state['title']}\n📁 Category: {state['category']}\n🎞 Total episodes: {len(state['episodes'])}\n\nWatch movie by clicking the button below."
                     bot.send_photo(final_ch, state['poster'], caption=msg, reply_markup=markup)
                 except:
                     pass
                 
             del user_states[cid]
-            bot.send_message(cid, "🚀 ওয়েবসাইট ও চ্যানেলে পাবলিশ হয়েছে!")
+            bot.send_message(cid, "🚀 Published to website and channel!")
             return
 
     if state["status"] == "AWAITING_POSTER":
@@ -1269,14 +1267,14 @@ def handle_bot_inputs(m):
             file_info = bot.get_file(m.photo[-1].file_id)
             user_states[cid]["poster"] = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
             user_states[cid]["status"] = "AWAITING_EPISODES"
-            bot.send_message(cid, "✅ পোস্টার এড হয়েছে। ভিডিও ফাইল পাঠান এবং সব শেষে /Done দিন।")
+            bot.send_message(cid, "✅ Poster added. Send video files and finally send /Done.")
         else:
-            bot.send_message(cid, "❌ ফটো পাঠান।")
+            bot.send_message(cid, "❌ Send a photo.")
 
     elif state["status"] == "AWAITING_EPISODES":
         if m.content_type in ['video', 'document']:
             if not channel_id:
-                bot.send_message(cid, "❌ চ্যানেল আইডি নেই।")
+                bot.send_message(cid, "❌ No channel ID.")
                 return
             try:
                 storage_ch = int(channel_id) if str(channel_id).startswith('-') else channel_id
@@ -1286,9 +1284,9 @@ def handle_bot_inputs(m):
                     sent = bot.send_document(storage_ch, m.document.file_id)
                 
                 user_states[cid]['episodes'].append(sent.message_id)
-                bot.send_message(cid, f"✅ এপিসোড {len(user_states[cid]['episodes'])} যুক্ত হয়েছে।")
+                bot.send_message(cid, f"✅ Episode {len(user_states[cid]['episodes'])} added.")
             except Exception as e:
-                bot.send_message(cid, f"❌ এরর: {str(e)}")
+                bot.send_message(cid, f"❌ Error: {str(e)}")
 
 @app.route('/tg-webhook', methods=['POST'])
 def tg_webhook_receiver():
