@@ -1,5 +1,6 @@
-Flask
-Flask-PyMongo
+flask
+flask-pymongo
+pymongo[srv]
 pyTelegramBotAPI
-pymongo
 werkzeug
+dnspython
