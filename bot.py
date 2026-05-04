@@ -290,8 +290,23 @@ FULL_CSS = """
         text-decoration: none;
         font-size: 14px;
         font-weight: bold;
+        border: none;
+        cursor: pointer;
     }
     .task-btn.link { background: #28a745; }
+
+    /* Modal for Timer */
+    #task-timer-modal {
+        display: none;
+        position: fixed;
+        top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.9);
+        z-index: 10000;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+    }
 
     /* Admin Manage List */
     .manage-item {
@@ -475,7 +490,14 @@ def tasks():
     tasks_list = list(mongo.db.tasks.find())
     
     user = mongo.db.users.find_one({"_id": ObjectId(session['user_id'])})
-    completed = user.get('completed_tasks', [])
+    
+    # ডেলি লিমিট রিসেট লজিক (রোজকার স্ট্যাটাস)
+    today = datetime.datetime.now().strftime("%Y-%m-%d")
+    daily_stats = user.get('daily_stats', {"date": today, "counts": {}})
+    
+    if daily_stats.get('date') != today:
+        daily_stats = {"date": today, "counts": {}}
+        mongo.db.users.update_one({"_id": user['_id']}, {"$set": {"daily_stats": daily_stats}})
 
     content = """
     <div class="section-title">কয়েন ইনকাম করুন <i class="fas fa-coins" style="color:gold;"></i></div>
@@ -483,78 +505,111 @@ def tasks():
     <div class="task-card">
         <div class="task-info">
             <h4>{{ t.title }}</h4>
-            <p>+{{ t.reward }} কয়েন</p>
+            <p>+{{ t.reward }} কয়েন | লিমিট: {{ daily_stats.counts.get(t._id|string, 0) }}/{{ t.get('daily_limit', 1) }}</p>
         </div>
-        {% if t._id|string in completed %}
-            <span style="color:var(--gray); font-weight:bold;">সম্পন্ন</span>
+        {% if daily_stats.counts.get(t._id|string, 0)|int >= t.get('daily_limit', 1)|int %}
+            <span style="color:var(--gray); font-weight:bold;">লিমিট শেষ</span>
         {% else %}
-            {% if t.type == 'monetag' %}
-                <button onclick="runMonetag('{{ t._id }}')" class="task-btn">Watch Now</button>
-            {% else %}
-                <a href="/complete-link-task/{{ t._id }}" target="_blank" onclick="setTimeout(()=>location.reload(), 2000)" class="task-btn link">Visit Now</a>
-            {% endif %}
+            <button onclick="handleTask('{{ t._id }}', '{{ t.type }}', {{ t.get('timer', 5) }})" class="task-btn">শুরু করুন</button>
         {% endif %}
     </div>
     {% endfor %}
 
+    <!-- Timer Modal -->
+    <div id="task-timer-modal">
+        <h2 style="color:var(--primary);">অপেক্ষা করুন...</h2>
+        <div id="timer-countdown" style="font-size:50px; font-weight:bold; margin:20px 0;">0</div>
+        <p id="timer-subtext">টাস্কটি শেষ হতে কয়েন যোগ হবে।</p>
+        <button id="claim-reward-btn" class="btn" style="display:none; max-width:200px;" onclick="claimReward()">কয়েন ক্লেইম করুন</button>
+    </div>
+
     <script>
-        function runMonetag(taskId) {
-            fetch('/get-task-script/' + taskId)
+        let currentTaskId = "";
+
+        function handleTask(taskId, type, timerSec) {
+            currentTaskId = taskId;
+            
+            // নতুন ট্যাবে লিঙ্ক খোলা (যদি লিঙ্ক টাস্ক হয়)
+            fetch('/get-task-data/' + taskId)
             .then(res => res.json())
             .then(data => {
-                if(data.script) {
+                if(type === 'link') {
+                    window.open(data.content, '_blank');
+                } else if(type === 'monetag') {
+                    // স্ক্রিপ্ট থাকলে এখানে ইনজেক্ট করা যেতে পারে
                     const div = document.createElement('div');
-                    div.innerHTML = data.script;
+                    div.innerHTML = data.content;
                     document.body.appendChild(div);
-                    setTimeout(() => {
-                        claimReward(taskId);
-                    }, 5000);
                 }
             });
+
+            // টাইমার শুরু
+            document.getElementById('task-timer-modal').style.display = 'flex';
+            let timeLeft = timerSec;
+            document.getElementById('timer-countdown').innerText = timeLeft;
+            document.getElementById('claim-reward-btn').style.display = 'none';
+
+            let timer = setInterval(() => {
+                timeLeft--;
+                document.getElementById('timer-countdown').innerText = timeLeft;
+                if(timeLeft <= 0) {
+                    clearInterval(timer);
+                    document.getElementById('timer-countdown').innerText = "সম্পন্ন!";
+                    document.getElementById('claim-reward-btn').style.display = 'block';
+                }
+            }, 1000);
         }
 
-        function claimReward(taskId) {
-            fetch('/claim-task/' + taskId, {method: 'POST'})
+        function claimReward() {
+            showLoader();
+            fetch('/claim-task-new/' + currentTaskId, {method: 'POST'})
             .then(res => res.json())
             .then(data => {
                 if(data.success) {
-                    alert('অভিনন্দন! পুরস্কার আপনার ব্যালেন্সে যোগ হয়েছে।');
+                    alert('অভিনন্দন! ' + data.reward + ' কয়েন যোগ হয়েছে।');
+                    location.reload();
+                } else {
+                    alert(data.error || 'কিছু ভুল হয়েছে!');
                     location.reload();
                 }
             });
         }
     </script>
     """
-    return render_full_page(content, tasks_list=tasks_list, completed=completed)
+    return render_full_page(content, tasks_list=tasks_list, daily_stats=daily_stats)
 
-@app.route('/get-task-script/<tid>')
-def get_task_script(tid):
+@app.route('/get-task-data/<tid>')
+def get_task_data(tid):
     t = mongo.db.tasks.find_one({"_id": ObjectId(tid)})
-    return jsonify({"script": t['content'] if t else ""})
+    return jsonify({"content": t['content'] if t else ""})
 
-@app.route('/complete-link-task/<tid>')
-def complete_link_task(tid):
-    if 'user_id' not in session: return redirect('/login')
-    t = mongo.db.tasks.find_one({"_id": ObjectId(tid)})
-    if t:
-        mongo.db.users.update_one({"_id": ObjectId(session['user_id'])}, {
-            "$inc": {"coins": t['reward']},
-            "$addToSet": {"completed_tasks": str(t['_id'])}
-        })
-        return redirect(t['content'])
-    return redirect('/tasks')
-
-@app.route('/claim-task/<tid>', methods=['POST'])
-def claim_task(tid):
+@app.route('/claim-task-new/<tid>', methods=['POST'])
+def claim_task_new(tid):
     if 'user_id' not in session: return jsonify({"success": False})
+    
     t = mongo.db.tasks.find_one({"_id": ObjectId(tid)})
-    if t:
-        mongo.db.users.update_one({"_id": ObjectId(session['user_id'])}, {
-            "$inc": {"coins": t['reward']},
-            "$addToSet": {"completed_tasks": str(t['_id'])}
-        })
-        return jsonify({"success": True})
-    return jsonify({"success": False})
+    if not t: return jsonify({"success": False, "error": "টাস্ক পাওয়া যায়নি!"})
+    
+    uid = ObjectId(session['user_id'])
+    user = mongo.db.users.find_one({"_id": uid})
+    
+    today = datetime.datetime.now().strftime("%Y-%m-%d")
+    daily_stats = user.get('daily_stats', {"date": today, "counts": {}})
+    
+    # ডেলি লিমিট চেক
+    current_count = daily_stats.get('counts', {}).get(str(tid), 0)
+    if int(current_count) >= int(t.get('daily_limit', 1)):
+        return jsonify({"success": False, "error": "আজকের লিমিট শেষ!"})
+    
+    # কয়েন এবং স্ট্যাটাস আপডেট
+    mongo.db.users.update_one({"_id": uid}, {
+        "$inc": {"coins": int(t.get('reward', 10)), f"daily_stats.counts.{tid}": 1},
+        "$set": {"daily_stats.date": today}
+    })
+    
+    return jsonify({"success": True, "reward": t.get('reward', 10)})
+
+# --- আগের সব রাউটস অক্ষুণ্ণ রাখা হয়েছে ---
 
 @app.route('/buy-premium')
 def buy_premium():
@@ -770,7 +825,9 @@ def admin():
                 "title": request.form.get('title'),
                 "type": request.form.get('type'),
                 "content": request.form.get('content'),
-                "reward": 10
+                "reward": int(request.form.get('reward', 10)),
+                "timer": int(request.form.get('timer', 10)),
+                "daily_limit": int(request.form.get('daily_limit', 1))
             })
             flash("টাস্ক এড হয়েছে!")
         elif action == 'add_offer':
@@ -811,13 +868,18 @@ def admin():
                 <option value="monetag">মনিটেগ স্ক্রিপ্ট</option>
                 <option value="link">ডিরেক্ট লিঙ্ক</option>
             </select>
-            <textarea name="content" placeholder="স্ক্রিপ্ট অথবা লিঙ্ক এখানে দিন" style="width:100%; height:100px; background:#1a1a1a; color:white; padding:10px; border-radius:10px; border:1px solid #333;"></textarea>
+            <textarea name="content" placeholder="স্ক্রিপ্ট অথবা লিঙ্ক এখানে দিন" style="width:100%; height:80px; background:#1a1a1a; color:white; padding:10px; border-radius:10px; border:1px solid #333;"></textarea>
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
+                <input type="number" name="reward" placeholder="Reward (Coin)" value="10">
+                <input type="number" name="timer" placeholder="Wait Time (Sec)" value="10">
+                <input type="number" name="daily_limit" placeholder="Daily Limit" value="1">
+            </div>
             <button class="btn" type="submit">টাস্ক সেভ করুন</button>
         </form>
         <div style="margin-top:20px;">
             {% for t in current_tasks %}
             <div class="manage-item">
-                <span>{{ t.title }}</span>
+                <span>{{ t.title }} ({{ t.reward }} Coin)</span>
                 <form method="POST" style="margin:0;">
                     <input type="hidden" name="action" value="del_task">
                     <input type="hidden" name="tid" value="{{ t._id }}">
@@ -912,7 +974,8 @@ def register():
                 "fname": fname, "lname": lname, "number": num, 
                 "password": generate_password_hash(pw), "role": role, 
                 "joined": datetime.datetime.now(),
-                "coins": 0, "completed_tasks": [], "premium_until": None
+                "coins": 0, "completed_tasks": [], "premium_until": None,
+                "daily_stats": {"date": datetime.datetime.now().strftime("%Y-%m-%d"), "counts": {}}
             })
             flash("রেজিস্ট্রেশন সফল! এখন লগিন করুন।")
             return redirect('/login')
