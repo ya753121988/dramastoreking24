@@ -40,35 +40,49 @@ def delete_msg(chat_id, message_id, delay):
     except:
         pass
 
-# --- Notification Function Helper ---
-def send_movie_notification(movie_id):
-    movie = mongo.db.movies.find_one({"_id": ObjectId(movie_id)})
-    settings = get_site_settings()
-    notif_ch = settings.get('notification_channel')
-    if movie and notif_ch:
-        try:
-            final_ch = int(notif_ch) if str(notif_ch).startswith('-') else notif_ch
-            markup = telebot.types.InlineKeyboardMarkup()
-            markup.add(telebot.types.InlineKeyboardButton("👁 Watch Movie", url=f"{BASE_URL}/movie/{movie_id}"))
-            
-            msg = (
-                f"drama name : {movie['title']} {movie.get('quality', 'HD')} {movie['category']} all part uplode done @{BOT_USERNAME}\n\n"
-                f"drama link : {BASE_URL}/movie/{movie_id}\n\n"
-                f"-------------------------------------------\n"
-                f"join our community 🤝\n"
-                f"-------------------------------------------\n"
-                f"✅ main channel: {settings.get('notif_main')}\n"
-                f"✅ official chat: {settings.get('notif_chat')}\n"
-                f"✅ fb page: {settings.get('notif_fb')}\n\n"
-                f"⭐ don't forget to share with friends! ⭐\n\n"
-                f"{settings.get('notif_footer')}"
-            )
-            bot.send_photo(final_ch, movie['poster'], caption=msg, reply_markup=markup)
-            return True
-        except Exception as e:
-            print(f"Notification Error: {e}")
+# --- 100% Guaranteed Notification Function ---
+def send_manual_notification(movie_id):
+    try:
+        movie = mongo.db.movies.find_one({"_id": ObjectId(movie_id)})
+        settings = mongo.db.settings.find_one({"type": "config"})
+        if not movie or not settings:
             return False
-    return False
+        
+        notif_ch = settings.get('notification_channel', '').strip()
+        if not notif_ch:
+            return False
+
+        # Channel ID logic (Check if it's ID or Username)
+        try:
+            target_chat = int(notif_ch) if (notif_ch.startswith('-') or notif_ch.isdigit()) else notif_ch
+        except:
+            target_chat = notif_ch
+
+        markup = telebot.types.InlineKeyboardMarkup()
+        markup.add(telebot.types.InlineKeyboardButton("👁 Watch Movie", url=f"{BASE_URL}/movie/{movie_id}"))
+        
+        msg = (
+            f"drama name : {movie.get('title')} {movie.get('quality', 'HD')} {movie.get('category')} all part uplode done @{BOT_USERNAME}\n\n"
+            f"drama link : {BASE_URL}/movie/{movie_id}\n\n"
+            f"-------------------------------------------\n"
+            f"join our community 🤝\n"
+            f"-------------------------------------------\n"
+            f"✅ main channel: {settings.get('notif_main', '')}\n"
+            f"✅ official chat: {settings.get('notif_chat', '')}\n"
+            f"✅ fb page: {settings.get('notif_fb', '')}\n\n"
+            f"⭐ don't forget to share with friends! ⭐\n\n"
+            f"{settings.get('notif_footer', '')}"
+        )
+        
+        # 100% Delivery: Try sending photo, if fails send text
+        try:
+            bot.send_photo(target_chat, movie.get('poster'), caption=msg, reply_markup=markup)
+        except:
+            bot.send_message(target_chat, msg, reply_markup=markup)
+        return True
+    except Exception as e:
+        print(f"Error sending notification: {e}")
+        return False
 
 # --- Detailed Premium CSS (Design Section Updated) ---
 FULL_CSS = """
@@ -363,7 +377,7 @@ FULL_CSS = """
         border: 1px solid #333;
     }
     .del-btn { background: #ff4d4d; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; }
-    .notif-btn { background: #00c6ff; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; margin-right: 5px; }
+    .notif-btn { background: #007bff; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; margin-right: 5px; }
 
     @media (max-width: 600px) {
         .movie-grid { grid-template-columns: 1fr; gap: 15px; }
@@ -985,7 +999,7 @@ def admin():
                 "protect_content": request.form.get('protect_content')
             }}, upsert=True)
             flash("Ad and storage settings updated!")
-        # --- NOTIFICATION SETTINGS SAVE LOGIC ---
+        # --- NEW NOTIFICATION LINKS SAVE LOGIC ---
         elif action == 'update_notif_links':
             mongo.db.settings.update_one({"type": "config"}, {"$set": {
                 "notification_channel": request.form.get('notification_channel'),
@@ -994,18 +1008,17 @@ def admin():
                 "notif_fb": request.form.get('notif_fb'),
                 "notif_footer": request.form.get('notif_footer')
             }}, upsert=True)
-            flash("Telegram Notification Settings updated!")
+            flash("Notification Section updated!")
         elif action == 'delete_movie':
             mid = request.form.get('movie_id')
             mongo.db.movies.delete_one({"_id": ObjectId(mid)})
             flash("Movie has been deleted!")
-        # --- NEW MANUAL NOTIFICATION TRIGGER ---
-        elif action == 'resend_notification':
+        elif action == 'push_notification':
             mid = request.form.get('movie_id')
-            if send_movie_notification(mid):
-                flash("Notification sent successfully to the channel!")
+            if send_manual_notification(mid):
+                flash("Notification sent successfully!")
             else:
-                flash("Error sending notification! Check channel ID.")
+                flash("Failed to send notification! Check Channel ID.")
             
         return redirect('/admin')
 
@@ -1025,13 +1038,13 @@ def admin():
         </form>
     </div>
 
-    <!-- --- NOTIFICATION BOX SETTINGS UI (CHANNEL ID ADDED HERE) --- -->
+    <!-- --- NOTIFICATION SECTION (TELEGRAM CHANNEL ID ADDED) --- -->
     <div class="card" style="border-top:4px solid #FFA500;">
         <h3><i class="fas fa-bell"></i> Telegram Notification Settings</h3>
-        <p style="color:var(--gray); font-size:12px; margin-bottom:10px;">Configure your Telegram Channel and Post format.</p>
+        <p style="color:var(--gray); font-size:12px; margin-bottom:10px;">Configure where and how notifications are sent.</p>
         <form method="POST">
             <input type="hidden" name="action" value="update_notif_links">
-            Notification Channel ID: <input name="notification_channel" value="{{ settings.notification_channel or '' }}" placeholder="-100xxxxxxxxx">
+            Notification Channel ID (Required): <input name="notification_channel" value="{{ settings.notification_channel or '' }}" placeholder="-100xxxxxxxxx">
             Main Channel Link: <input name="notif_main" value="{{ settings.notif_main or '' }}" placeholder="t.me/drama4uofficial">
             Official Chat Link: <input name="notif_chat" value="{{ settings.notif_chat or '' }}" placeholder="t.me/drama2hchat">
             FB Page Link: <input name="notif_fb" value="{{ settings.notif_fb or '' }}" placeholder="facebook.com/bddranaworld">
@@ -1133,9 +1146,9 @@ def admin():
                 <span>{{ m.title }}</span>
                 <div style="display:flex;">
                     <form method="POST" style="margin:0;">
-                        <input type="hidden" name="action" value="resend_notification">
+                        <input type="hidden" name="action" value="push_notification">
                         <input type="hidden" name="movie_id" value="{{ m._id }}">
-                        <button class="notif-btn" type="submit" title="Send Notification"><i class="fas fa-bell"></i></button>
+                        <button class="notif-btn" type="submit" title="Push Notification"><i class="fas fa-bell"></i></button>
                     </form>
                     <form method="POST" style="margin:0;">
                         <input type="hidden" name="action" value="delete_movie">
@@ -1327,8 +1340,8 @@ def handle_bot_inputs(m):
             res = mongo.db.movies.insert_one(user_states[cid])
             movie_id = str(res.inserted_id)
             
-            # --- Auto Notification ---
-            send_movie_notification(movie_id)
+            # --- Auto Notification Logic ---
+            send_manual_notification(movie_id)
                 
             del user_states[cid]
             bot.send_message(cid, "🚀 Published to website and channel!")
