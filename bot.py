@@ -74,7 +74,7 @@ def send_manual_notification(movie_id):
             f"{settings.get('notif_footer', '')}"
         )
         
-        # 100% Delivery: Try sending photo (supports File ID or URL), if fails send text
+        # 100% Delivery: Try sending photo, if fails send text
         try:
             bot.send_photo(target_chat, movie.get('poster'), caption=msg, reply_markup=markup)
         except:
@@ -1317,7 +1317,7 @@ def start_adding_movie(m):
             "views": 0, 
             "status": "AWAITING_POSTER"
         }
-        bot.send_message(m.chat.id, "📸 Send movie poster photo OR Send Poster File ID as text.")
+        bot.send_message(m.chat.id, "📸 Send movie poster photo.")
     except:
         bot.send_message(m.chat.id, "⚠️ Correct format: `/movie Name, Category, Quality`", parse_mode="Markdown")
 
@@ -1347,23 +1347,24 @@ def handle_bot_inputs(m):
             bot.send_message(cid, "🚀 Published to website and channel!")
             return
 
-    # --- MODIFIED POSTER LOGIC TO ACCEPT PHOTO OR FILE ID ---
     if state["status"] == "AWAITING_POSTER":
+        f_id = None
         if m.content_type == 'photo':
-            # ফটো দিলে সেটির File ID এবং URL দুটোর জন্যই ব্যবস্থা রাখা হয়েছে
-            file_id = m.photo[-1].file_id
-            file_info = bot.get_file(file_id)
-            user_states[cid]["poster"] = file_id # নোটিফিকেশনের জন্য সরাসরি File ID ব্যবহার হবে
-            user_states[cid]["poster_url"] = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
-            user_states[cid]["status"] = "AWAITING_EPISODES"
-            bot.send_message(cid, "✅ Poster added via Photo. Send video files and finally send /Done.")
+            f_id = m.photo[-1].file_id
         elif m.content_type == 'text':
-            # টেক্সট হিসেবে সরাসরি File ID দিলেও সেটা কাজ করবে
-            user_states[cid]["poster"] = m.text.strip()
-            user_states[cid]["status"] = "AWAITING_EPISODES"
-            bot.send_message(cid, "✅ Poster added via File ID. Send video files and finally send /Done.")
+            f_id = m.text.strip() # সরাসরি ফাইল আইডি টেক্সট হিসেবে দিলেও এটা কাজ করবে
+
+        if f_id:
+            try:
+                # ফাইল আইডি থেকে সরাসরি ডাউনলোডেবল ইউআরএল তৈরি করা হচ্ছে যাতে সাইটে ফটো আসে
+                file_info = bot.get_file(f_id)
+                user_states[cid]["poster"] = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
+                user_states[cid]["status"] = "AWAITING_EPISODES"
+                bot.send_message(cid, "✅ Poster added. Send video files and finally send /Done.")
+            except:
+                bot.send_message(cid, "❌ Invalid Photo or File ID.")
         else:
-            bot.send_message(cid, "❌ Send a photo or a File ID as text.")
+            bot.send_message(cid, "❌ Send a photo or Poster File ID.")
 
     elif state["status"] == "AWAITING_EPISODES":
         if m.content_type in ['video', 'document']:
