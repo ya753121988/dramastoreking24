@@ -74,9 +74,10 @@ def send_manual_notification(movie_id):
             f"{settings.get('notif_footer', '')}"
         )
         
-        # 100% Delivery: Try sending photo, if fails send text
+        # 100% Delivery: Try sending photo using File ID (for speed), if fails send URL
+        p_id = movie.get('poster_file_id') or movie.get('poster')
         try:
-            bot.send_photo(target_chat, movie.get('poster'), caption=msg, reply_markup=markup)
+            bot.send_photo(target_chat, p_id, caption=msg, reply_markup=markup)
         except:
             bot.send_message(target_chat, msg, reply_markup=markup)
         return True
@@ -1317,7 +1318,7 @@ def start_adding_movie(m):
             "views": 0, 
             "status": "AWAITING_POSTER"
         }
-        bot.send_message(m.chat.id, "📸 Send movie poster photo.")
+        bot.send_message(m.chat.id, "📸 Send movie poster photo OR Send Poster File ID as text.")
     except:
         bot.send_message(m.chat.id, "⚠️ Correct format: `/movie Name, Category, Quality`", parse_mode="Markdown")
 
@@ -1352,15 +1353,18 @@ def handle_bot_inputs(m):
         if m.content_type == 'photo':
             f_id = m.photo[-1].file_id
         elif m.content_type == 'text':
-            f_id = m.text.strip() # সরাসরি ফাইল আইডি টেক্সট হিসেবে দিলেও এটা কাজ করবে
+            f_id = m.text.strip()
 
         if f_id:
             try:
-                # ফাইল আইডি থেকে সরাসরি ডাউনলোডেবল ইউআরএল তৈরি করা হচ্ছে যাতে সাইটে ফটো আসে
+                # Get File info from Telegram
                 file_info = bot.get_file(f_id)
-                user_states[cid]["poster"] = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
+                # Save both systems: URL for website and ID for Telegram Notification
+                user_states[cid]["poster"] = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}" # For Website
+                user_states[cid]["poster_file_id"] = f_id # For Telegram Notification Channel
+                
                 user_states[cid]["status"] = "AWAITING_EPISODES"
-                bot.send_message(cid, "✅ Poster added. Send video files and finally send /Done.")
+                bot.send_message(cid, "✅ Poster added (URL & File ID saved). Send video files and finally send /Done.")
             except:
                 bot.send_message(cid, "❌ Invalid Photo or File ID.")
         else:
