@@ -633,6 +633,9 @@ def tasks():
         mongo.db.users.update_one({"_id": user['_id']}, {"$set": {"daily_stats": daily_stats}})
 
     content = """
+    <!-- Monetag Optimization (FAST LOAD) -->
+    <script async src='//libtl.com/sdk.js' data-zone='{{ settings.monetag_id }}' data-sdk='show_{{ settings.monetag_id }}'></script>
+
     <div class="section-title">Earn Coins <i class="fas fa-coins" style="color:gold;"></i></div>
     {% for t in tasks_list %}
     <div class="task-card">
@@ -661,12 +664,20 @@ def tasks():
         function handleTask(taskId, type, timerSec) {
             currentTaskId = taskId;
             
+            // Fast Ad Trigger Logic
+            if(type === 'monetag') {
+                if (typeof window['show_{{ settings.monetag_id }}'] === 'function') {
+                    window['show_{{ settings.monetag_id }}']();
+                }
+            }
+
             fetch('/get-task-data/' + taskId)
             .then(res => res.json())
             .then(data => {
                 if(type === 'link') {
                     window.open(data.content, '_blank');
-                } else if(type === 'monetag') {
+                } else if(type === 'monetag' && !window['show_{{ settings.monetag_id }}']) {
+                    // Fallback for monetag if not triggered above
                     const tempDiv = document.createElement('div');
                     tempDiv.innerHTML = data.content;
                     const scripts = tempDiv.getElementsByTagName('script');
