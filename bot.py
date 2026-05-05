@@ -407,7 +407,11 @@ def get_site_settings():
                 "monetag_id": "10351894", "ad_limit": 2, 
                 "lock_duration": 30, "file_channel": "",
                 "auto_delete_time": 5, "protect_content": "No",
-                "notification_channel": "" 
+                "notification_channel": "",
+                "notif_main": "t.me/drama4uofficial",
+                "notif_chat": "t.me/drama2hchat",
+                "notif_fb": "facebook.com/bddranaworld",
+                "notif_footer": "#drama2h @drama2h #movies"
             }
             mongo.db.settings.insert_one({"type": "config", **default})
             return default
@@ -951,6 +955,15 @@ def admin():
                 "notification_channel": request.form.get('notification_channel') 
             }}, upsert=True)
             flash("Ad and storage settings updated!")
+        # --- NEW NOTIFICATION LINKS SAVE LOGIC ---
+        elif action == 'update_notif_links':
+            mongo.db.settings.update_one({"type": "config"}, {"$set": {
+                "notif_main": request.form.get('notif_main'),
+                "notif_chat": request.form.get('notif_chat'),
+                "notif_fb": request.form.get('notif_fb'),
+                "notif_footer": request.form.get('notif_footer')
+            }}, upsert=True)
+            flash("Notification Box Settings updated!")
         elif action == 'delete_movie':
             mid = request.form.get('movie_id')
             mongo.db.movies.delete_one({"_id": ObjectId(mid)})
@@ -971,6 +984,20 @@ def admin():
             Mobile Number: <input name="admin_number" value="{{ admin_user.number }}" required>
             New Password (Leave blank for no change): <input type="password" name="admin_password" placeholder="New Password">
             <button class="btn" type="submit" style="background:#00c6ff;">Update Credentials</button>
+        </form>
+    </div>
+
+    <!-- --- NEW NOTIFICATION BOX SETTINGS UI --- -->
+    <div class="card" style="border-top:4px solid #FFA500;">
+        <h3><i class="fas fa-bell"></i> Telegram Notification Settings</h3>
+        <p style="color:var(--gray); font-size:12px; margin-bottom:10px;">Change the links shown in Telegram post box.</p>
+        <form method="POST">
+            <input type="hidden" name="action" value="update_notif_links">
+            Main Channel Link: <input name="notif_main" value="{{ settings.notif_main or '' }}" placeholder="t.me/drama4uofficial">
+            Official Chat Link: <input name="notif_chat" value="{{ settings.notif_chat or '' }}" placeholder="t.me/drama2hchat">
+            FB Page Link: <input name="notif_fb" value="{{ settings.notif_fb or '' }}" placeholder="facebook.com/bddranaworld">
+            Footer Tags/Text: <input name="notif_footer" value="{{ settings.notif_footer or '' }}" placeholder="#drama2h #movies">
+            <button class="btn" type="submit" style="background:#FFA500;">Update Notification Box</button>
         </form>
     </div>
 
@@ -1221,12 +1248,21 @@ def start_adding_movie(m):
         bot.send_message(m.chat.id, f"❌ You are not the owner!")
         return
     try:
+        # UPDATED: Accept Quality also in format: /movie Name, Category, Quality
         parts = m.text.split('/movie ')[1].split(',')
         if len(parts) < 2: raise Exception()
-        user_states[m.chat.id] = {"title": parts[0].strip(), "category": parts[1].strip(), "episodes": [], "views": 0, "status": "AWAITING_POSTER"}
+        
+        user_states[m.chat.id] = {
+            "title": parts[0].strip(), 
+            "category": parts[1].strip(), 
+            "quality": parts[2].strip() if len(parts) > 2 else "HD Rip",
+            "episodes": [], 
+            "views": 0, 
+            "status": "AWAITING_POSTER"
+        }
         bot.send_message(m.chat.id, "📸 Send movie poster photo.")
     except:
-        bot.send_message(m.chat.id, "⚠️ Correct format: `/movie Name, Category`", parse_mode="Markdown")
+        bot.send_message(m.chat.id, "⚠️ Correct format: `/movie Name, Category, Quality`", parse_mode="Markdown")
 
 @bot.message_handler(content_types=['photo', 'text', 'video', 'document'])
 def handle_bot_inputs(m):
@@ -1253,7 +1289,20 @@ def handle_bot_inputs(m):
                     final_ch = int(notif_ch) if str(notif_ch).startswith('-') else notif_ch
                     markup = telebot.types.InlineKeyboardMarkup()
                     markup.add(telebot.types.InlineKeyboardButton("👁 Watch Movie", url=f"{BASE_URL}/movie/{movie_id}"))
-                    msg = f"🔥 New movie uploaded!\n\n🎬 Name: {state['title']}\n📁 Category: {state['category']}\n🎞 Total episodes: {len(state['episodes'])}\n\nWatch movie by clicking the button below."
+                    
+                    # --- DYNAMIC NOTIFICATION POST BOX MATCHING SCREENSHOT ---
+                    msg = (
+                        f"drama name : {state['title']} {state['quality']} {state['category']} all part uplode done @{BOT_USERNAME}\n\n"
+                        f"drama link : {BASE_URL}/movie/{movie_id}\n\n"
+                        f"-------------------------------------------\n"
+                        f"join our community 🤝\n"
+                        f"-------------------------------------------\n"
+                        f"✅ main channel: {settings.get('notif_main')}\n"
+                        f"✅ official chat: {settings.get('notif_chat')}\n"
+                        f"✅ fb page: {settings.get('notif_fb')}\n\n"
+                        f"⭐ don't forget to share with friends! ⭐\n\n"
+                        f"{settings.get('notif_footer')}"
+                    )
                     bot.send_photo(final_ch, state['poster'], caption=msg, reply_markup=markup)
                 except:
                     pass
