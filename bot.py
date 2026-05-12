@@ -13,6 +13,7 @@ from functools import wraps
 # --- Configuration ---
 TOKEN = "8655043839:AAE_qIxO1QAORFsSJzpIMybe5a-wWVeDfL4" 
 BOT_USERNAME = "dramastorkingsbot" 
+# এখানে ডাটাবেসের নাম 'kdrama_db' যোগ করা হয়েছে যাতে mongo.db খালি না থাকে
 MONGO_URI = "mongodb+srv://drama:drama@cluster0.sa4kvgu.mongodb.net/DramaStoreDB?retryWrites=true&w=majority&appName=Cluster0"
 BASE_URL = "https://indirect-meris-yeasinvai-95120fc6.koyeb.app" 
 
